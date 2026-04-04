@@ -10,8 +10,12 @@ class CNNLSTM(tf.keras.Model):
     Модель CNN-LSTM для классификации последовательностей позиций.
     Принимает на вход позиции и оценки, возвращает вероятности классов.
     """
-    def __init__(self, CNN=None, n_lstm_blocks=32, n_lstm_layers=2, bidirectional=True, window_length=5):
+    def __init__(self, CNN=None, n_lstm_blocks=32, n_lstm_layers=2, bidirectional=True, window_length=5, only_bin=False, 
+                binary_optimizer=None, multiclass_optimizer=None):
         self.window_length = window_length
+        self.only_bin = only_bin
+        self.binary_optimizer=tf.keras.optimizers.SGD(momentum=0.9) if not binary_optimizer else binary_optimizer
+        self.multiclass_optimizer=tf.keras.optimizers.SGD(momentum=0.9) if not binary_optimizer and not only_bin else binary_optimizer
         self.threshold = 0.5
         super(CNNLSTM, self).__init__()
         self.n_classes = num_classes
@@ -131,23 +135,17 @@ class CNNLSTM(tf.keras.Model):
             'multiclass': multiclass_probas
         }
 
-    '''def predict_decision(self, inputs):
-        """
-        Метод инференса для получения финального предсказания.
-        Применяет пороговую логику к бинарному выходу.
-        Возвращает -1 если бинарная вероятность ниже порога, иначе индекс класса.
-        binary_probas[:, 1] - probability of some strike
-        """
-        outputs = self.call(inputs)
-        binary_probas = outputs['binary']
-        multiclass_probas = outputs['multiclass']
+        def binary_call(self, inputs):
+            positions, evals = inputs
+            vects = self._process_CNN(positions)
 
-        predictions = tf.where(
-            binary_probas[:, 1] < self.threshold,
-            tf.constant(self.n_classes-1, shape=[tf.shape(binary_probas)[0]]),
-            tf.argmax(multiclass_probas, axis=1)
-        )
-        return predictions'''
+            
+            vects, evals = self._prepare_data(vects, evals)
+            rnn_input = tf.concat([vects, evals], axis=2)
+            after_rnn = self.lstm(rnn_input)
+            return self.binary_classifier_head(after_rnn)
+
+        #def binary_training_step(self, inputs, target)
     
     
 if __name__=='__main__':
