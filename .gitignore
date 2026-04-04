@@ -1,1 +1,6 @@
 minimal-lc0-for-research/
+data/
+models/
+stockfish*
+lichess_db_puzzle/
+BinaryClassifierData
