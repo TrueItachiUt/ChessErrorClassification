@@ -1,6 +1,6 @@
 minimal-lc0-for-research/
 data/
-models/
+models/weights-256_10.pb
 stockfish*
 lichess_db_puzzle/
 BinaryClassifierData/
