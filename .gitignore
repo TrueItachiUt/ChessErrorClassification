@@ -3,4 +3,4 @@ data/
 models/
 stockfish*
 lichess_db_puzzle/
-BinaryClassifierData
+BinaryClassifierData/

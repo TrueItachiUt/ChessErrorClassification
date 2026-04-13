@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.keras.layers import Bidirectional
 import keras
+from Perfomance import *
 from Dataset import num_classes
 
 #@keras.utils.register_keras_serializable()
@@ -16,7 +17,6 @@ class CNNLSTM(tf.keras.Model):
         self.only_bin = only_bin
         self.binary_optimizer=tf.keras.optimizers.SGD(momentum=0.9) if not binary_optimizer else binary_optimizer
         self.multiclass_optimizer=tf.keras.optimizers.SGD(momentum=0.9) if not binary_optimizer and not only_bin else binary_optimizer
-        self.threshold = 0.5
         super(CNNLSTM, self).__init__()
         self.n_classes = num_classes
         path = 'models/tf_model_19x256.keras'
@@ -71,6 +71,7 @@ class CNNLSTM(tf.keras.Model):
 
         # Возвращаем размерность времени обратно
         return tf.reshape(cnn_out, [batch_size, n_frames, feature_dim])
+
 
     def _prepare_data(self, vects, evals):
         '''
@@ -135,7 +136,7 @@ class CNNLSTM(tf.keras.Model):
             'multiclass': multiclass_probas
         }
 
-        def binary_call(self, inputs):
+    def binary_call(self, inputs):
             positions, evals = inputs
             vects = self._process_CNN(positions)
 
@@ -145,10 +146,34 @@ class CNNLSTM(tf.keras.Model):
             after_rnn = self.lstm(rnn_input)
             return self.binary_classifier_head(after_rnn)
 
-        #def binary_training_step(self, inputs, target)
-    
+    def binary_training_step(self, inputs, target):
+
+            with tf.GradientTape() as tape:
+                preds = self.binary_call(inputs)
+                loss = binary_loss_fn(target, preds)
+            for metric in self.metrics:
+                if metric.name=='loss':
+                    metric.update_state(loss)
+                else:
+                    metric.update_state(target, preds)
+
+            binary_trainable = self.lstm.trainable_variables+self.binary_classifier_head.trainable_variables+self.CNN.trainable_variables
+            grads = tape.gradient(loss, binary_trainable)
+            self.binary_optimizer.apply_gradients(zip(grads, binary_trainable))
+
+    def training_run(self, ds: tf.data.Dataset, batch_size=20):
+        '''Runs an epoch on entire ds and saves checkpoint'''
+        self.only_bin = True
+        for (positions, evals, targets) in tqdm(ds.batch(batch_size)):
+            self.binary_training_step((positions, evals), targets)
     
 if __name__=='__main__':
     model = CNNLSTM()
     model([np.random.rand(5,8,8,112), np.random.rand(5)])
     #model.summary()
+    ar = np.load('BinaryClassifierData/test.npz')
+    positions = ar['x']; evals = ar['evals'].astype(np.float32); target = ar['y']
+    #print(positions.shape, evals.shape, target.shape)
+    model.binary_training_step((positions, evals), target)
+    for metric in model.metrics:
+        print(metric.result())

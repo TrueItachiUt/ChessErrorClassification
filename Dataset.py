@@ -71,7 +71,7 @@ def get_game_fens(batch_size=10):
                 
     return FENs, all_moves
 
-def get_binary_chunk(chunksize:int=50, class_weight:float=0.1, silent:bool=True, save:bool=False):
+def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True, save:bool=False):
     '''
     Creates chunk of data for binary classifier
     kwargs: 
@@ -129,19 +129,24 @@ def get_binary_chunk(chunksize:int=50, class_weight:float=0.1, silent:bool=True,
         return (all_positions, all_evals, y)
 
 def binary_data_generator(batch_size):
-    chunksize = 100
-    for _ in range(batch_size//100):
-        yield get_binary_chunk(chunksize=chunksize)
-
+    pos, evals, target = get_binary_chunk(batch_size)
+    for i in range(batch_size):
+        yield pos[i], evals[i], target[i]
+        
 def build_binary_dataset(batch_size):
-    dataset = Dataset.from_generator(data_generator, args=[batch_size],
+    dataset = Dataset.from_generator(binary_data_generator, args=[batch_size],
                                     output_signature=(
-                                        tf.TensorSpec(shape=(None, 5, 8, 8, 112), dtype=tf.int8), #positions
-                                        tf.TensorSpec(shape=(None, 5), dtype=tf.float32), #evals
-                                        tf.TensorSpec(shape=(None, 1), dtype=tf.int8) #targets
+                                        tf.TensorSpec(shape=(5, 8, 8, 112), dtype=tf.int8), #positions
+                                        tf.TensorSpec(shape=(5,), dtype=tf.float32), #evals
+                                        tf.TensorSpec(shape=(1,), dtype=tf.int8) #targets
                                         ))
     return dataset
     
 if __name__=='__main__':
-    ds = build_dataset(100)
-    #print(list(ds.take(1)))
+    #get_binary_chunk(save=True)
+    ds = build_binary_dataset(100).batch(5)
+    positions, evals, targets = iter(ds.take(1)).next()
+    from Model import CNNLSTM
+    model = CNNLSTM()
+    #print(positions.shape, evals.shape, targets.shape) None, 5, 8, 8 ,112
+    model.binary_call((positions, evals))

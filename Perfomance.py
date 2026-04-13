@@ -4,6 +4,19 @@ import numpy as np
 from Dataset import num_classes, class_weight
 from tensorflow.keras import ops
 
+
+class LossMetric(tf.keras.Metric):
+    def __init__(self, **kwargs):
+        super().__init__(name='loss', **kwargs)
+        self.sum = self.add_variable(shape=(), initializer='zeros', name='sum')
+        self.cnt = self.add_variable(shape=(), initializer='zeros', name='count')
+    def update_state(loss):
+        self.sum+=loss
+        self.cnt+=1
+    def result(self):
+        return self.sum/self.cnt
+
+    
 '''Важно помнить что y_true[:, -1] это no_class столбец, если 1 то удара нет
 В предсказаниях y_pred[:, 1] - вероятность того, что удар есть'''
 class BinaryAUCMetric(tf.keras.metrics.AUC):
@@ -82,17 +95,19 @@ class AccuracyMetric(tf.keras.metrics.Accuracy):
 
 bfce = BinaryFocalCrossentropy(apply_class_balancing=True, alpha=0.9) #Class 1 is 10 times more important than class 0 
 cce = CategoricalCrossentropy(reduction='none') #To handle loss
+
+
 @tf.function
 def binary_loss_fn(y_true, y_pred):
-    '''Loss for binary output probas and multiclass one-hot target'''
-    if len(tf.shape(y_true)) == 1:
+    '''Loss for binary output probas and binary target'''
+    '''if len(tf.shape(y_true)) == 1:
         y_true = tf.expand_dims(y_true, axis=0)
-    y_true = tf.cast(tf.equal(y_true[:, -1], 0), tf.int8) #In multiclass classification last column is 1 if 
-                                                          # 'no class', so we need to inverse it for binary detection
-    if len(y_pred.shape)==1:
-        y_pred = tf.expand_dims(y_pred, axis=0)
+    
+    if len(tf.shape(y_pred))==1:
+        y_pred = tf.expand_dims(y_pred, axis=0)'''
     y_pred = y_pred[:, 1]
     return bfce(y_true, y_pred)
+
 @tf.function
 def multiclass_loss_fn(y_true, y_pred):
     '''Loss for multiclass output probas and multiclass one-hot target'''
@@ -125,8 +140,10 @@ def multiclass_loss_fn(y_true, y_pred):
     return tf.reduce_sum(per_sample_losses) / tf.cast(original_batch_size, tf.float32)
 
 def detection_loss(y_true, y_pred):
+    bin_y_true = tf.cast(tf.equal(y_true[:, -1], 0), tf.int8) #In multiclass classification last column is 1 if 
+                                                          # 'no class', so we need to inverse it for binary detection
     return {
-        'binary': binary_loss_fn(y_true, y_pred['binary']),
+        'binary': binary_loss_fn(bin_y_true, y_pred['binary']),
         'multiclass': multiclass_loss_fn(y_true , y_pred['multiclass'])
     }
 
@@ -159,15 +176,15 @@ if __name__=='__main__':
     evals = ar['evals'][:batch_size]
     print(positions.shape, target.shape, evals.shape)
     target = np.append(target, np.zeros((target.shape[0], 1)), axis=1) #For dimensionality match'''
-    
+    bin_target = tf.cast(tf.equal(target[:, -1], 0), tf.int8)
     with tf.GradientTape() as tape:
         preds = model((positions, evals))
-        binary_loss = binary_loss_fn(target, preds['binary'])
+        binary_loss = binary_loss_fn(bin_target, preds['binary'])
         multiclass_loss = multiclass_loss_fn(target, preds['multiclass'])
         loss = binary_loss+multiclass_loss
 
     grad = tape.gradient(loss, model.trainable_variables)
-    #print(f"\n\n Preds are {preds} \n\n")
+    print(f"\n\n Preds are {preds} \n\n")
     
     #print(grad)
     
@@ -182,4 +199,4 @@ if __name__=='__main__':
     multiclass_acc.update_state(target, preds)
     print(f"Class prediction accuracy is {multiclass_acc.result()}")
 
-    #model.evaluate(x=(positions, evals), y={'binary':target, 'multiclass':target},verbose=1)
+    model.evaluate(x=(positions, evals), y={'binary':target, 'multiclass':bin_target},verbose=1)
