@@ -6,6 +6,7 @@ from minimal_lc0_for_research.leela_board import LeelaBoard
 from tqdm import tqdm
 from tensorflow.data import Dataset
 import tensorflow as tf
+from config import *
 from stockfish import Stockfish
 
 target_lichess_classes = [
@@ -28,6 +29,8 @@ n_game_samples=2
 n_moves = 5
 
 def get_game_fens(batch_size=10):
+    if not IS_PROJECT:
+        raise ValueError("Trying to run data generation not from the computer")
     with open('data/lichess_elite_2022-01.pgn') as f:
         FENs = []
         all_moves = []
@@ -72,12 +75,17 @@ def get_game_fens(batch_size=10):
     return FENs, all_moves
 
 def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True, save:bool=False):
+    
     '''
     Creates chunk of data for binary classifier
     kwargs: 
     chunksize: number of instances of both classes
     class_weight: proportion between class 1 (positive) and class 2 (negative)
     '''
+
+    if not IS_PROJECT:
+        raise ValueError("Trying to run data generation not from the computer")
+        
     path_to_binary = 'stockfish/stockfish-ubuntu-x86-64-avx2'
     engine = Stockfish(path=path_to_binary, depth=1)
     FENs, moves = get_game_fens(chunksize)

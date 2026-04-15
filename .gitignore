@@ -4,3 +4,7 @@ models/weights-256_10.pb
 stockfish*
 lichess_db_puzzle/
 BinaryClassifierData/
+test.ipynb
+main.ipynb
+tags_counts.json
+!BinaryClassifierData/test.npz

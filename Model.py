@@ -1,8 +1,13 @@
 import tensorflow as tf
 import numpy as np
+import os
 from tensorflow.keras.layers import Bidirectional
 import keras
+from tqdm import tqdm
+from IPython import display
+import matplotlib.pyplot as plt
 from Perfomance import *
+from config import *
 from Dataset import num_classes
 
 #@keras.utils.register_keras_serializable()
@@ -19,7 +24,7 @@ class CNNLSTM(tf.keras.Model):
         self.multiclass_optimizer=tf.keras.optimizers.SGD(momentum=0.9) if not binary_optimizer and not only_bin else binary_optimizer
         super(CNNLSTM, self).__init__()
         self.n_classes = num_classes
-        path = 'models/tf_model_19x256.keras'
+        path = f'{MODEL_DIR}/{MODEL_FILE_NAME}'
 
         if CNN is None:
             self.CNN = tf.keras.models.load_model(path)
@@ -44,12 +49,17 @@ class CNNLSTM(tf.keras.Model):
             tf.keras.layers.Dense(units=16, activation='tanh', name='multiclass_head_dense2'),
             tf.keras.layers.Dense(units=self.n_classes-1, activation='softmax', name='multiclass_head_dense3')
         ], name='multiclass_classifier_head')
+        
 
         self.CNN.build(input_shape=(None, 8, 8, 112))
         self.lstm.build(input_shape=(None, 5, 24))
         self.binary_classifier_head.build(input_shape=(None, n_lstm_blocks*2))
         self.multiclass_head.build(input_shape=(None, n_lstm_blocks*2))
-
+        
+        self.build(input_shape=(None, 8, 8, 112))
+        p_to_ch = f'{CHECKPOINT_DIR}/{CHECKPOINT_FILE_NAME}'
+        if os.path.exists(p_to_ch):
+            self.load_weights(p_to_ch)
 
     def _process_CNN(self, inputs):
         """
@@ -57,6 +67,9 @@ class CNNLSTM(tf.keras.Model):
         Преобразует 5D тензор (batch, frames, H, W, D) в 3D (batch, frames, features).
         Использует векторизацию через reshape для ускорения.
         """
+        inputs = tf.cast(inputs, tf.float32)
+        if tf.rank(inputs).numpy()==6:
+            inputs = tf.squeeze(inputs, axis=[0])
         inputs = tf.convert_to_tensor(inputs)
         if len(inputs.shape) == 4:
             inputs = tf.expand_dims(inputs, axis=0)
@@ -85,7 +98,7 @@ class CNNLSTM(tf.keras.Model):
         '''
         if len(evals.shape)==1:
             evals = tf.expand_dims(evals, axis=0) #batch_size, n_frames
-
+        
 
         if evals.shape[1]<self.window_length:
             evals = tf.pad(evals, [[0,0], [0, 5-evals.shape[1]]])
@@ -94,7 +107,7 @@ class CNNLSTM(tf.keras.Model):
             evals = evals[:, :self.window_length]
         #batch_size, 5
 
-        evals = tf.expand_dims(evals, axis=2)
+        evals = tf.cast(tf.expand_dims(evals, axis=2), tf.float32)
         evals = tf.tile(evals, [1,1,8])
         #batch_size, 5, 8 : every scalar 8 times at axis 1
         assert len(evals.shape)==3, f"Eval's shape is {evals.shape}"
@@ -109,7 +122,8 @@ class CNNLSTM(tf.keras.Model):
         mask = tf.reshape(mask, [1, 5, 1])
         vects = vects * mask
         return vects, evals
-
+    def _core(self):
+        return self.CNN.trainable_variables+self.lstm.trainable_variables
     def call(self, inputs):
         """
         Прямой проход модели.
@@ -118,6 +132,9 @@ class CNNLSTM(tf.keras.Model):
         evals: np.array формы (batch, frames,)
         Возвращает словарь с тензорами вероятностей для обучения.
         """
+        if self.only_bin:
+            return self.binary_call(inputs)
+
         positions, evals = inputs
         vects = self._process_CNN(positions)
 
@@ -146,34 +163,50 @@ class CNNLSTM(tf.keras.Model):
             after_rnn = self.lstm(rnn_input)
             return self.binary_classifier_head(after_rnn)
 
-    def binary_training_step(self, inputs, target):
-
-            with tf.GradientTape() as tape:
-                preds = self.binary_call(inputs)
-                loss = binary_loss_fn(target, preds)
-            for metric in self.metrics:
-                if metric.name=='loss':
-                    metric.update_state(loss)
-                else:
-                    metric.update_state(target, preds)
-
-            binary_trainable = self.lstm.trainable_variables+self.binary_classifier_head.trainable_variables+self.CNN.trainable_variables
-            grads = tape.gradient(loss, binary_trainable)
-            self.binary_optimizer.apply_gradients(zip(grads, binary_trainable))
 
     def training_run(self, ds: tf.data.Dataset, batch_size=20):
-        '''Runs an epoch on entire ds and saves checkpoint'''
+        '''Runs training across entire ds and saves checkpoint. Visualizes progress after finishing'''
+        path_to_checkpoint = f'{CHECKPOINT_DIR}/{CHECKPOINT_FILE_NAME}'
+        if os.path.exists(path_to_checkpoint):
+            self.load_weights(path_to_checkpoint)
+        else:
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
         self.only_bin = True
-        for (positions, evals, targets) in tqdm(ds.batch(batch_size)):
-            self.binary_training_step((positions, evals), targets)
+        binary_trainable = self._core() + self.binary_classifier_head.trainable_variables
+        bacm = BinaryAccuracyMetric()
+        bin_acc = []
+        losses = []
+        
+        for positions, evals, targets in ds.batch(batch_size):
+            with tf.GradientTape() as tape:
+                preds = self.binary_call((positions,evals))
+                loss = binary_loss_fn(targets, preds)
+            
+            grads = tape.gradient(loss, binary_trainable)
+            self.binary_optimizer.apply_gradients(zip(grads, binary_trainable))
+            
+            bacm.update_state(targets, preds)
+            bin_acc.append(bacm.result())
+            losses.append(loss.numpy())
+
+        fig = plt.figure(figsize=(10, 6))
+        plt.plot(bin_acc, label='Accuracy', color='yellow')
+        plt.plot(losses, label='Loss', color='green')
+        plt.xlabel('Batch')
+        plt.legend()
+        display.display(fig); plt.close(fig)
+        self.save_weights(path_to_checkpoint)
+
+
     
 if __name__=='__main__':
     model = CNNLSTM()
     model([np.random.rand(5,8,8,112), np.random.rand(5)])
     #model.summary()
-    ar = np.load('BinaryClassifierData/test.npz')
+    ar = np.load(f'{DATA_DIR}/test.npz')
     positions = ar['x']; evals = ar['evals'].astype(np.float32); target = ar['y']
     #print(positions.shape, evals.shape, target.shape)
-    model.binary_training_step((positions, evals), target)
-    for metric in model.metrics:
-        print(metric.result())
+    with tf.GradientTape() as tape:
+        pred = model.binary_call((positions, evals))
+        loss = binary_loss_fn(target, pred)
+    print(loss)

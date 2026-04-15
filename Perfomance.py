@@ -10,7 +10,7 @@ class LossMetric(tf.keras.Metric):
         super().__init__(name='loss', **kwargs)
         self.sum = self.add_variable(shape=(), initializer='zeros', name='sum')
         self.cnt = self.add_variable(shape=(), initializer='zeros', name='count')
-    def update_state(loss):
+    def update_state(self, loss):
         self.sum+=loss
         self.cnt+=1
     def result(self):
@@ -24,7 +24,8 @@ class BinaryAUCMetric(tf.keras.metrics.AUC):
         super().__init__(name=name, curve='PR', **kwargs)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        y_true = tf.cast(tf.equal(y_true[:,-1], 0), tf.int8)
+        if y_true.shape[1]>1:
+            y_true = tf.cast(tf.equal(y_true[:,-1], 0), tf.int8) #Multiclass labels
         if isinstance(y_pred, dict):
             y_pred = y_pred['binary']
         binary_probas = y_pred[:, 1]
@@ -35,18 +36,17 @@ class BinaryAUCMetric(tf.keras.metrics.AUC):
 
 class BinaryAccuracyMetric(tf.keras.Metric):
 
-    def __init__(self, bin=False, name='BinaryAccuracy', **kwargs):
+    def __init__(self, name='BinaryAccuracy', **kwargs):
         super().__init__(name=name, **kwargs)
-        self.bin = bin
         self.tp=self.add_variable(shape=(),initializer='zeros',name='tp')
         self.fp=self.add_variable(shape=(),initializer='zeros',name='fp')
         self.fn = self.add_variable(shape=(), initializer='zeros', name='fn')
         self.tn=self.add_variable(shape=(),initializer='zeros',name='tn')
 
 
-    def update_state(self, y_true, y_pred):
+    def update_state(self, y_true, y_pred, sample_weight=None):
 
-        if not self.bin:
+        if isinstance(y_pred, dict):
             y_true = ops.equal(y_true[:, -1], 0) #inverse
             y_pred = y_pred['binary'] 
         assert len(y_true.shape)==1 or y_true.shape[1]==1, f"Expected dense target, got shape {y_true.shape}"
