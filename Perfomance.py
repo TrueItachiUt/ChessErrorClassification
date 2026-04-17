@@ -93,7 +93,8 @@ class AccuracyMetric(tf.keras.metrics.Accuracy):
         return super().result()
 
 
-bfce = BinaryFocalCrossentropy(apply_class_balancing=True, alpha=0.9) #Class 1 is 10 times more important than class 0 
+#bfce = BinaryFocalCrossentropy(apply_class_balancing=True, alpha=0.9) #Class 1 is 10 times more important than class 0 
+bce = tf.keras.losses.BinaryCrossentropy(reduction=None)
 cce = CategoricalCrossentropy(reduction='none') #To handle loss
 
 
@@ -105,8 +106,11 @@ def binary_loss_fn(y_true, y_pred):
     
     if len(tf.shape(y_pred))==1:
         y_pred = tf.expand_dims(y_pred, axis=0)'''
-    y_pred = y_pred[:, 1]
-    return bfce(y_true, y_pred)
+    y_pred = tf.expand_dims(y_pred[:, 1], axis=-1) #Batch every single el to reduction
+    y_true_broadcasted = tf.expand_dims(y_true, axis=-1)
+    loss_ar= bce(y_true_broadcasted, y_pred)
+    weights = tf.where(y_true==1, 1/class_weight, 1)
+    return tf.reduce_mean(loss_ar*weights)
 
 @tf.function
 def multiclass_loss_fn(y_true, y_pred):
@@ -184,8 +188,8 @@ if __name__=='__main__':
         loss = binary_loss+multiclass_loss
 
     grad = tape.gradient(loss, model.trainable_variables)
-    print(f"\n\n Preds are {preds} \n\n")
-    
+    #print(f"\n\n Preds are {preds} \n\n")
+    print(multiclass_loss, binary_loss)
     #print(grad)
     
     binary_auc = BinaryAUCMetric()
@@ -199,4 +203,4 @@ if __name__=='__main__':
     multiclass_acc.update_state(target, preds)
     print(f"Class prediction accuracy is {multiclass_acc.result()}")
 
-    model.evaluate(x=(positions, evals), y={'binary':target, 'multiclass':bin_target},verbose=1)
+    #model.evaluate(x=(positions, evals), y={'binary':target, 'multiclass':bin_target},verbose=1)

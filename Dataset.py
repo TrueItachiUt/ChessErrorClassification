@@ -7,7 +7,10 @@ from tqdm import tqdm
 from tensorflow.data import Dataset
 import tensorflow as tf
 from config import *
-from stockfish import Stockfish
+try:
+    from stockfish import Stockfish
+except ImportError:
+    pass
 
 target_lichess_classes = [
     'exposedKing',
@@ -111,7 +114,8 @@ def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True,
     idx = np.random.randint(0, a['x'].shape[0]-n_positive)
     positive_positions = a['x'][idx:idx+n_positive]
     positive_evals = a['evals'][idx:idx+n_positive]
-    indices = np.random.shuffle(np.arange(chunksize))
+    indices = np.arange(chunksize)
+    np.random.shuffle(indices)
 
     if not silent: print(f'positive positions shape is {positive_positions.shape}, positive evals shape is {positive_evals.shape}\
         ')
@@ -151,10 +155,10 @@ def build_binary_dataset(batch_size):
     return dataset
     
 if __name__=='__main__':
-    #get_binary_chunk(save=True)
-    ds = build_binary_dataset(100).batch(5)
+    get_binary_chunk(save=True)
+    ds = build_binary_dataset(100)
     positions, evals, targets = iter(ds.take(1)).next()
     from Model import CNNLSTM
     model = CNNLSTM()
     #print(positions.shape, evals.shape, targets.shape) None, 5, 8, 8 ,112
-    model.binary_call((positions, evals))
+    #model.training_run(ds)

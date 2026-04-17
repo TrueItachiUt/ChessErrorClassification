@@ -1,1 +1,4 @@
 pandas==3.0.1
+chess==1.11.2
+tensorflow==2.21
+python-dotenv

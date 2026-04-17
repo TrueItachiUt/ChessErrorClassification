@@ -8,3 +8,4 @@ test.ipynb
 main.ipynb
 tags_counts.json
 !BinaryClassifierData/test.npz
+.env

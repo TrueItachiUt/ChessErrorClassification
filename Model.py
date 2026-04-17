@@ -32,12 +32,14 @@ class CNNLSTM(tf.keras.Model):
             self.CNN = CNN
         self.CNN.trainable=False
         
-        
+        self.norm_1 = tf.keras.layers.LayerNormalization(name='PreLSTM_layer_norm')
+
         self.lstm = tf.keras.models.Sequential([
             Bidirectional(tf.keras.layers.LSTM(n_lstm_blocks, return_sequences=True, name='LSTM1')),
             Bidirectional(tf.keras.layers.LSTM(n_lstm_blocks), name='LSTM2')
         ], name='LSTM')
 
+        self.norm_2 = tf.keras.layers.LayerNormalization(name='PostLSTM_layer_norm')
 
         self.binary_classifier_head = tf.keras.models.Sequential([
             tf.keras.layers.Dense(units=16, activation='tanh', name='binary_head_dense1'),
@@ -52,6 +54,7 @@ class CNNLSTM(tf.keras.Model):
         
 
         self.CNN.build(input_shape=(None, 8, 8, 112))
+        self.norm_1.build(input_shape=(None, 5, 16)); self.norm_2.build(input_shape=(None, n_lstm_blocks*2))
         self.lstm.build(input_shape=(None, 5, 24))
         self.binary_classifier_head.build(input_shape=(None, n_lstm_blocks*2))
         self.multiclass_head.build(input_shape=(None, n_lstm_blocks*2))
@@ -68,7 +71,7 @@ class CNNLSTM(tf.keras.Model):
         Использует векторизацию через reshape для ускорения.
         """
         inputs = tf.cast(inputs, tf.float32)
-        if tf.rank(inputs).numpy()==6:
+        if inputs.ndim==6:
             inputs = tf.squeeze(inputs, axis=[0])
         inputs = tf.convert_to_tensor(inputs)
         if len(inputs.shape) == 4:
@@ -116,7 +119,9 @@ class CNNLSTM(tf.keras.Model):
             pad_frames = 5 - vects.shape[1]
             paddings = tf.constant([[0, 0], [0, pad_frames], [0, 0]])
             vects = tf.pad(vects, paddings)
-            
+        #Layer Normalization
+        vects = self.norm_1(vects)
+
         #We are less interested in opponent's moves
         mask = tf.constant([1.0, 0.1, 1, 0.1, 1], dtype=tf.float32)
         mask = tf.reshape(mask, [1, 5, 1])
@@ -144,9 +149,10 @@ class CNNLSTM(tf.keras.Model):
         rnn_input = tf.concat([vects, evals], axis=2)
 
         after_rnn = self.lstm(rnn_input)
-        binary_probas = self.binary_classifier_head(after_rnn)
+        norm_after_rnn = self.norm_2(after_rnn)
+        binary_probas = self.binary_classifier_head(norm_after_rnn)
         #print(f"std of rnn output is {np.std(after_rnn)}, mean is {np.mean(after_rnn)}")
-        multiclass_probas = self.multiclass_head(after_rnn)
+        multiclass_probas = self.multiclass_head(norm_after_rnn)
 
         return {
             'binary': binary_probas,
@@ -160,7 +166,7 @@ class CNNLSTM(tf.keras.Model):
             
             vects, evals = self._prepare_data(vects, evals)
             rnn_input = tf.concat([vects, evals], axis=2)
-            after_rnn = self.lstm(rnn_input)
+            after_rnn = self.norm_2(self.lstm(rnn_input))
             return self.binary_classifier_head(after_rnn)
 
 
@@ -177,17 +183,19 @@ class CNNLSTM(tf.keras.Model):
         bin_acc = []
         losses = []
         
-        for positions, evals, targets in ds.batch(batch_size):
+        for batch, (positions, evals, targets) in enumerate(ds.batch(batch_size)):
             with tf.GradientTape() as tape:
                 preds = self.binary_call((positions,evals))
                 loss = binary_loss_fn(targets, preds)
-            
+            print(loss)
             grads = tape.gradient(loss, binary_trainable)
             self.binary_optimizer.apply_gradients(zip(grads, binary_trainable))
             
             bacm.update_state(targets, preds)
             bin_acc.append(bacm.result())
             losses.append(loss.numpy())
+            if (batch%5==0):
+                print(f'Batch {batch} | Loss {loss.numpy()} | Balanced Accuracy {bacm.result()}')
 
         fig = plt.figure(figsize=(10, 6))
         plt.plot(bin_acc, label='Accuracy', color='yellow')
@@ -197,6 +205,21 @@ class CNNLSTM(tf.keras.Model):
         display.display(fig); plt.close(fig)
         self.save_weights(path_to_checkpoint)
 
+    def inspect(self, inputs):
+        positions, evals = inputs
+        print(f"Position dtype {positions.dtype} Evals mean {np.mean(evals)}, std {np.std(evals)}")
+        vects = self._process_CNN(positions)
+        print(f"Mean of CNN output with 2 Dense layers {np.mean(vects)}, std {np.std(vects)}, shape {tf.shape(vects)}")
+        vects, evals = self._prepare_data(vects, evals)
+        print(f'Mean of prepared to lstm data {np.mean(vects)}, shape {tf.shape(vects)}')
+        rnn_input = tf.concat([vects, evals], axis=2)
+        after_rnn = self.lstm(rnn_input)
+        norm_after_rnn = self.norm_2(after_rnn)
+        print(f"Shape of after rnn {tf.shape(after_rnn)}, mean {np.mean(after_rnn)}, std {np.std(after_rnn)}")
+        print(f"Shape of noprmalized after rnn {tf.shape(norm_after_rnn)}, mean {np.mean(norm_after_rnn)}, std {np.std(norm_after_rnn)}")
+        binary_head_out = self.binary_classifier_head(norm_after_rnn)
+        print(f"After binary classifier shape {tf.shape(binary_head_out)}, mean at axis 0 {np.mean(binary_head_out, axis=0)}")
+        print(f"Binary values output: {binary_head_out}")
 
     
 if __name__=='__main__':
@@ -210,3 +233,4 @@ if __name__=='__main__':
         pred = model.binary_call((positions, evals))
         loss = binary_loss_fn(target, pred)
     print(loss)
+    model.inspect((positions[:5], evals[:5]))
