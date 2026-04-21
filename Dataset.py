@@ -147,7 +147,7 @@ def binary_data_generator(batch_size, generate=False, test=False):
         if test:
             ar = np.load(f"{DATA_DIR}/test.npz")
         else:
-            n = len([name for name in os.listdir('BinaryClassifierData')])-1
+            n = len([name for name in os.listdir(DATA_DIR)])-1
             ar = np.load(f"{DATA_DIR}/batch{np.random.randint(0, n)}.npz")
         pos=ar['x']; target=ar['y']; evals=ar['evals']
     for i in range(min(pos.shape[0], batch_size)):
