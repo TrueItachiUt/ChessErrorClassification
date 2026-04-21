@@ -163,7 +163,8 @@ def build_binary_dataset(batch_size, generate = False, test=False):
     return dataset
     
 if __name__=='__main__':
-    #get_binary_chunk(save=True)
+    #get_binary_chunk(chunksize=100, save=True, filename='batch0.npz')
+
     ds = build_binary_dataset(100,test=True)
     positions, evals, targets = iter(ds.take(1)).next()
     from Model import CNNLSTM

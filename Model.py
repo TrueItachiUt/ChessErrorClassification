@@ -10,6 +10,9 @@ from Perfomance import *
 from config import *
 from Dataset import num_classes
 
+
+
+path_to_checkpoint = f'{CHECKPOINT_DIR}/{CHECKPOINT_FILE_NAME}'
 #@keras.utils.register_keras_serializable()
 class CNNLSTM(tf.keras.Model):
     """
@@ -60,9 +63,9 @@ class CNNLSTM(tf.keras.Model):
         self.multiclass_head.build(input_shape=(None, n_lstm_blocks*2))
         
         self.build(input_shape=(None, 8, 8, 112))
-        p_to_ch = f'{CHECKPOINT_DIR}/{CHECKPOINT_FILE_NAME}'
-        if os.path.exists(p_to_ch):
-            self.load_weights(p_to_ch)
+
+        if os.path.exists(path_to_checkpoint):
+            self.load_weights(path_to_checkpoint)
 
     def _process_CNN(self, inputs):
         """
@@ -172,7 +175,7 @@ class CNNLSTM(tf.keras.Model):
 
     def training_run(self, ds: tf.data.Dataset, batch_size=20):
         '''Runs training across entire ds and saves checkpoint. Visualizes progress after finishing'''
-        path_to_checkpoint = f'{CHECKPOINT_DIR}/{CHECKPOINT_FILE_NAME}'
+
         if os.path.exists(path_to_checkpoint):
             self.load_weights(path_to_checkpoint)
         else:
@@ -187,7 +190,7 @@ class CNNLSTM(tf.keras.Model):
             with tf.GradientTape() as tape:
                 preds = self.binary_call((positions,evals))
                 loss = binary_loss_fn(targets, preds)
-            print(loss)
+
             grads = tape.gradient(loss, binary_trainable)
             self.binary_optimizer.apply_gradients(zip(grads, binary_trainable))
             
@@ -205,6 +208,10 @@ class CNNLSTM(tf.keras.Model):
         plt.xticks(batches)
         plt.legend()
         display.display(fig); plt.close(fig)
+        self.save()
+
+    def save(self):
+        path_to_checkpoint = f'{CHECKPOINT_DIR}/{CHECKPOINT_FILE_NAME}'
         self.save_weights(path_to_checkpoint)
 
     def inspect(self, inputs):
@@ -235,4 +242,4 @@ if __name__=='__main__':
         pred = model.binary_call((positions, evals))
         loss = binary_loss_fn(target, pred)
     print(loss)
-    model.inspect((positions[:5], evals[:5]))
+    #model.inspect((positions[:5], evals[:5]))

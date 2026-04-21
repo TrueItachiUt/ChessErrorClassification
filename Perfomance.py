@@ -50,7 +50,7 @@ class BinaryAccuracyMetric(tf.keras.Metric):
             y_true = ops.equal(y_true[:, -1], 0) #inverse
             y_pred = y_pred['binary'] 
         assert len(y_true.shape)==1 or y_true.shape[1]==1, f"Expected dense target, got shape {y_true.shape}"
-        y_pred = ops.cast(y_pred[:, 1], "bool") #Threshold is 0.5
+        y_pred = y_pred[:, 1]>0.5 #Threshold is 0.5
         tp_sampl = ops.logical_and(
             ops.equal(y_pred, True), ops.equal(y_true, True)
         )
@@ -110,7 +110,7 @@ def binary_loss_fn(y_true, y_pred):
     y_true_broadcasted = tf.expand_dims(y_true, axis=-1)
     loss_ar= bce(y_true_broadcasted, y_pred)
     weights = tf.where(y_true==1, 1/class_weight, 1)
-    return tf.reduce_mean(loss_ar*weights)
+    return tf.reduce_sum(loss_ar*weights)/tf.reduce_sum(weights)
 
 @tf.function
 def multiclass_loss_fn(y_true, y_pred):
