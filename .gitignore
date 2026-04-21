@@ -1,4 +1,3 @@
-minimal-lc0-for-research/
 data/
 models/weights-256_10.pb
 stockfish*
@@ -7,5 +6,5 @@ BinaryClassifierData/
 test.ipynb
 main.ipynb
 tags_counts.json
-!BinaryClassifierData/test.npz
+checkpoints/
 .env
