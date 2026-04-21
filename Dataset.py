@@ -77,7 +77,7 @@ def get_game_fens(batch_size=10):
                 
     return FENs, all_moves
 
-def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True, save:bool=False):
+def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True, save:bool=False, filename='test.npz'):
     
     '''
     Creates chunk of data for binary classifier
@@ -109,8 +109,8 @@ def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True,
             negative_evals[i][j]=(engine.get_evaluation()['value'])/100
             negative_positions[i][j]=np.moveaxis(board.lcz_features(), 0, -1)
 
-
-    i = np.random.randint(0, 20); a = np.load(f"data/batch{i}.npz")
+    high = len([name for name in os.listdir('data') if name.startswith('batch')])
+    i = np.random.randint(0, high); a = np.load(f"data/batch{i}.npz")
     idx = np.random.randint(0, a['x'].shape[0]-n_positive)
     positive_positions = a['x'][idx:idx+n_positive]
     positive_evals = a['evals'][idx:idx+n_positive]
@@ -134,19 +134,27 @@ def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True,
     if y.ndim==3:
         y = np.squeeze(y, axis=0)
     if save:
-        filename = "BinaryClassifierData/test.npz"
-        np.savez(file=filename, x=all_positions, y = y, evals=all_evals)
-        print("Successfully saved test.npz")
+        filename_s = f"BinaryClassifierData/{filename}"
+        np.savez(file=filename_s, x=all_positions, y = y, evals=all_evals)
+        print(f"Successfully saved {filename}")
     else:
         return (all_positions, all_evals, y)
 
-def binary_data_generator(batch_size):
-    pos, evals, target = get_binary_chunk(batch_size)
-    for i in range(batch_size):
+def binary_data_generator(batch_size, generate=False, test=False):
+    if generate:
+        pos, evals, target = get_binary_chunk(batch_size)
+    else:
+        if test:
+            ar = np.load(f"{DATA_DIR}/test.npz")
+        else:
+            n = len([name for name in os.listdir('BinaryClassifierData')])-1
+            ar = np.load(f"{DATA_DIR}/batch{np.random.randint(0, n)}.npz")
+        pos=ar['x']; target=ar['y']; evals=ar['evals']
+    for i in range(min(pos.shape[0], batch_size)):
         yield pos[i], evals[i], target[i]
         
-def build_binary_dataset(batch_size):
-    dataset = Dataset.from_generator(binary_data_generator, args=[batch_size],
+def build_binary_dataset(batch_size, generate = False, test=False):
+    dataset = Dataset.from_generator(binary_data_generator, args=[batch_size, generate, test],
                                     output_signature=(
                                         tf.TensorSpec(shape=(5, 8, 8, 112), dtype=tf.int8), #positions
                                         tf.TensorSpec(shape=(5,), dtype=tf.float32), #evals
@@ -155,8 +163,8 @@ def build_binary_dataset(batch_size):
     return dataset
     
 if __name__=='__main__':
-    get_binary_chunk(save=True)
-    ds = build_binary_dataset(100)
+    #get_binary_chunk(save=True)
+    ds = build_binary_dataset(100,test=True)
     positions, evals, targets = iter(ds.take(1)).next()
     from Model import CNNLSTM
     model = CNNLSTM()

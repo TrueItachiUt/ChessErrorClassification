@@ -198,9 +198,11 @@ class CNNLSTM(tf.keras.Model):
                 print(f'Batch {batch} | Loss {loss.numpy()} | Balanced Accuracy {bacm.result()}')
 
         fig = plt.figure(figsize=(10, 6))
-        plt.plot(bin_acc, label='Accuracy', color='yellow')
-        plt.plot(losses, label='Loss', color='green')
+        batches = range(1, len(bin_acc) + 1)
+        plt.plot(batches, bin_acc, label='Accuracy', color='yellow')
+        plt.plot(batches, losses, label='Loss', color='green')
         plt.xlabel('Batch')
+        plt.xticks(batches)
         plt.legend()
         display.display(fig); plt.close(fig)
         self.save_weights(path_to_checkpoint)

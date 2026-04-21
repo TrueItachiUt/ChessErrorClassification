@@ -5,7 +5,7 @@ load_dotenv()
 path_col = '/content/drive/Shareddrives/Shared_drive1/ChessErrorClassification/'
 path_kaggle = '/kaggle/input'
 var = os.getenv('ENV')
-IS_COLAB = IS_KAGGLE = False
+IS_COLAB = IS_KAGGLE = IS_PROJECT = False
 if var=='colab':
     IS_COLAB = True
 elif var=='kaggle':
