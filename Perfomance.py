@@ -100,17 +100,15 @@ cce = CategoricalCrossentropy(reduction='none') #To handle loss
 
 @tf.function
 def binary_loss_fn(y_true, y_pred):
-    '''Loss for binary output probas and binary target'''
-    '''if len(tf.shape(y_true)) == 1:
-        y_true = tf.expand_dims(y_true, axis=0)
-    
-    if len(tf.shape(y_pred))==1:
-        y_pred = tf.expand_dims(y_pred, axis=0)'''
-    y_pred = tf.expand_dims(y_pred[:, 1], axis=-1) #Batch every single el to reduction
+    y_pred = tf.expand_dims(y_pred[:, 1], axis=-1)
+
     y_true_broadcasted = tf.expand_dims(y_true, axis=-1)
-    loss_ar= bce(y_true_broadcasted, y_pred)
-    weights = tf.where(y_true==1, 1/class_weight, 1)
-    return tf.reduce_sum(loss_ar*weights)/tf.reduce_sum(weights)
+
+    loss_ar = bce(y_true_broadcasted, y_pred)
+
+    weights = tf.where(y_true == 1, (1 / class_weight)*10, 1)
+             
+    return tf.reduce_mean(loss_ar*weights)
 
 @tf.function
 def multiclass_loss_fn(y_true, y_pred):

@@ -6,9 +6,10 @@ import keras
 from tqdm import tqdm
 from IPython import display
 import matplotlib.pyplot as plt
+from typing import Union
 from Perfomance import *
 from config import *
-from Dataset import num_classes
+from Dataset import num_classes,build_binary_dataset
 
 
 
@@ -229,6 +230,42 @@ class CNNLSTM(tf.keras.Model):
         binary_head_out = self.binary_classifier_head(norm_after_rnn)
         print(f"After binary classifier shape {tf.shape(binary_head_out)}, mean at axis 0 {np.mean(binary_head_out, axis=0)}")
         print(f"Binary values output: {binary_head_out}")
+    
+    def inspect_binary_predicting(self, data: Union[tf.data.Dataset, tuple]):
+        if isinstance(data, tf.data.Dataset):
+            pos, ev, tar = zip(*data.as_numpy_iterator())  # Fixed 'ds' -> 'data'
+            positions = np.stack(pos, axis=0)
+            evals = np.stack(ev, axis=0)
+            targets = np.stack(tar, axis=0)
+        elif isinstance(data, tuple):
+            try:
+                positions, evals, targets = data
+            except Exception as e:
+                print(f"Failed to unpack data: ensure you provided positions, evals, targets \n\n {e}")
+                return
+        else:
+            print(f"Unknown type of data {type(data)}")
+            return
+
+        mask = (targets == 1).flatten()
+        true_positions = positions[mask]; true_evals = evals[mask]; true_targets = targets[mask]
+
+        # Add randomness: include ~25% negatives to the positive set
+        n_neg = max(1, len(true_positions) // 4)
+        neg_idx = np.random.choice(np.where(~mask)[0], size=min(n_neg, np.sum(~mask)), replace=False)
+        mask[neg_idx] = True
+
+        # Shuffle combined indices
+        sampled_idx = np.where(mask)[0]
+        np.random.shuffle(sampled_idx)
+        positions = positions[sampled_idx]
+        evals = evals[sampled_idx]
+        targets = targets[sampled_idx]
+
+        preds = self.binary_call((positions, evals))
+        loss = binary_loss_fn(targets, preds)  # Fixed 'target' -> 'targets'
+        print(f"Predictions for class 0 are {preds[:, 0].numpy()}\n\n targets are {targets}")
+        print(f"Loss is {loss}")
 
     
 if __name__=='__main__':
@@ -237,9 +274,6 @@ if __name__=='__main__':
     #model.summary()
     ar = np.load(f'{DATA_DIR}/test.npz')
     positions = ar['x']; evals = ar['evals'].astype(np.float32); target = ar['y']
+    ds = build_binary_dataset(batch_size=200)
     #print(positions.shape, evals.shape, target.shape)
-    with tf.GradientTape() as tape:
-        pred = model.binary_call((positions, evals))
-        loss = binary_loss_fn(target, pred)
-    print(loss)
-    #model.inspect((positions[:5], evals[:5]))
+    model.inspect_binary_predicting(ds)

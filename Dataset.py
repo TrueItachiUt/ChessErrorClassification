@@ -83,7 +83,7 @@ def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True,
     Creates chunk of data for binary classifier
     kwargs: 
     chunksize: number of instances of both classes
-    class_weight: proportion between class 1 (positive) and class 2 (negative)
+    class_weight: proportion between class 1 (positive) and class 0 (negative)
     '''
 
     if not IS_PROJECT:
@@ -163,11 +163,11 @@ def build_binary_dataset(batch_size, generate = False, test=False):
     return dataset
     
 if __name__=='__main__':
-    #get_binary_chunk(chunksize=100, save=True, filename='batch0.npz')
+    #get_binary_chunk(chunksize=100, class_weight=0.3, save=True, filename='batch0.npz')
 
     ds = build_binary_dataset(100,test=True)
     positions, evals, targets = iter(ds.take(1)).next()
-    from Model import CNNLSTM
-    model = CNNLSTM()
+    #from Model import CNNLSTM
+    #model = CNNLSTM()
     #print(positions.shape, evals.shape, targets.shape) None, 5, 8, 8 ,112
     #model.training_run(ds)
