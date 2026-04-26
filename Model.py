@@ -262,10 +262,23 @@ class CNNLSTM(tf.keras.Model):
         evals = evals[sampled_idx]
         targets = targets[sampled_idx]
 
-        preds = self.binary_call((positions, evals))
-        loss = binary_loss_fn(targets, preds)  # Fixed 'target' -> 'targets'
-        print(f"Predictions for class 0 are {preds[:, 0].numpy()}\n\n targets are {targets}")
-        print(f"Loss is {loss}")
+        with tf.GradientTape() as tape:
+
+            preds = self.binary_call((positions, evals))
+            loss = binary_loss_fn(targets, preds)
+        
+        grads = tape.gradient(loss, self._core() + self.binary_classifier_head.trainable_variables)
+
+        grad_norm = tf.linalg.global_norm(grads)
+        print(f"Prediction probas for class 0 are {preds[:, 0].numpy()}\n\n targets are {targets}")
+        print(f"Loss is {loss}, global gradient norm is {grad_norm}")
+        if grad_norm>=10.0:
+            layer_name = "LSTM1"  # or layer index, e.g., 2
+            for i, var in enumerate(self._core() + self.binary_classifier_head.trainable_variables):
+                if layer_name in var.name:
+                    layer_grads = grads[i]
+                    print(f"{var.name} grad norm: {tf.linalg.global_norm([layer_grads]):.4f}")
+                    break
 
     
 if __name__=='__main__':

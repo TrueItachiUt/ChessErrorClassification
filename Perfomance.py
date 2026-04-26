@@ -106,7 +106,7 @@ def binary_loss_fn(y_true, y_pred):
 
     loss_ar = bce(y_true_broadcasted, y_pred)
 
-    weights = tf.where(y_true == 1, (1 / class_weight)*10, 1)
+    weights = tf.where(y_true == 1, (1 / class_weight), 1)
              
     return tf.reduce_mean(loss_ar*weights)
 
