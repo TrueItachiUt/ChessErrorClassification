@@ -1,173 +1,145 @@
-'''This file has all information about current dataset
-    Not to be confused with Dataset.ipynb, where all experiments and generation is run'''
-from chess.pgn import read_game
-import numpy as np
+import numpy as np, pandas as pd, os, glob, random, chess.pgn, tensorflow as tf
+from stockfish import Stockfish
 from minimal_lc0_for_research.leela_board import LeelaBoard
-from tqdm import tqdm
 from tensorflow.data import Dataset
-import tensorflow as tf
 from config import *
-try:
-    from stockfish import Stockfish
-except ImportError:
-    pass
 
-target_lichess_classes = [
-    'exposedKing',
-    'sacrifice',
-    'hangingPiece',
-    'fork',
-    'captureTheDefender',
-    'pin',
-    'quietMove',
-    'intermezzo',
-    'deflection'
-]
-additional_target_classes = [
-    'planlessGame'
-]
-num_classes = len(target_lichess_classes)+len(additional_target_classes)+1
-class_weight = 0.1 # proba of sample contain tactical strike
-n_game_samples=2
-n_moves = 5
+file_number = 5
+class_weight=0.1
+path_to_binary = 'stockfish/stockfish-ubuntu-x86-64-avx2'
+target_lichess_classes = ['exposedKing','sacrifice','hangingPiece','fork','captureTheDefender','pin','quietMove','intermezzo','deflection']
+additional_target_classes = ['planlessGame']
+targets = target_lichess_classes + additional_target_classes
+num_classes = len(targets) + 1
+LI_COLS = ['PuzzleId', 'FEN', 'Moves', 'Rating', 'RatingDeviation', 'Popularity', 'NbPlays', 'Themes', 'GameUrl', 'OpeningTags']
 
-def get_game_fens(batch_size=10):
-    if not IS_PROJECT:
-        raise ValueError("Trying to run data generation not from the computer")
-    with open('data/lichess_elite_2022-01.pgn') as f:
-        FENs = []
-        all_moves = []
-        # Target number of samples: batch_size adjusted by class_weight and samples per game
-        target_samples = int(batch_size * (1 - class_weight) // n_game_samples)
-        
-        while len(FENs) < target_samples:
-            game = read_game(f)
-            moves = list(game.mainline_moves())
-            total = len(moves)
-            
-            # Cannot sample if game is too short
-            if total < n_moves:
-                continue
-                
-            # Available indices: must have at least n_moves remaining after idx
-            available = [i for i in range(total - n_moves + 1)]
-            p = np.array([True] * len(available)).astype(bool)  # availability mask
-            
-            for _ in range(n_game_samples):
-                # Check if any indices remain available
-                if not np.any(p):
-                    break
-                    
-                # Sample from available indices only
-                idx_in_available = np.random.choice(np.where(p)[0])
-                idx = available[idx_in_available]
-                
-                # Mark neighborhood as unavailable to prevent intersections
-                # Block [idx - n_moves, idx + n_moves) in the original moves list
-                for k, orig_idx in enumerate(available):
-                    if abs(orig_idx - idx) < n_moves:
-                        p[k] = False
-                
-                # Build position at idx
-                board = game.board()
-                for i in range(idx):
-                    board.push(moves[i])
-                FENs.append(board.fen())
-                all_moves.append(moves[idx:idx + n_moves])  # Now guaranteed length == n_moves
-                
-    return FENs, all_moves
+def generate_target_vector(tags): return np.array([t in tags.split() for t in targets], dtype=bool)
 
-def get_binary_chunk(chunksize:int=10, class_weight:float=0.1, silent:bool=True, save:bool=False, filename='test.npz'):
-    
+def get_game_fens(n, pgn='data/lichess_elite_2024-05.pgn'):
+    FENs, moves = [], []
+    with open(pgn) as f:
+        for _ in range(n):
+            g = chess.pgn.read_game(f)
+            if not g: break
+            ml = list(g.mainline_moves())
+            if len(ml)<2: continue
+            l = min(random.choices([2,3,4,5], weights=[1,1,2,4], k=1)[0], len(ml))
+            s = random.randint(0, len(ml)-l); b = g.board()
+            for m in ml[:s]: b.push(m)
+            FENs.append(b.fen()); moves.append(ml[s:s+l])
+    return FENs, moves
+
+def positive_batch_generator(df, n_instances=1000, chunksize=100, binary=True):
+    c, eng = 0, Stockfish(path=path_to_binary, depth=1)
+    for _ in range(n_instances//chunksize):
+        pos, evs, tgs = (np.zeros((chunksize,5,8,8,112),np.uint8), 
+                        np.zeros((chunksize,5)), 
+                        np.ones(chunksize,np.uint8) if binary else np.zeros((chunksize,num_classes-1),bool))
+        f = 0
+        while f<chunksize and c<len(df):
+            fen, m, th = df['FEN'].values[c], df['Moves'].values[c], df['Themes'].values[c]; c+=1
+            nl = len(m.split(' '))  # FIX: split by space to count moves
+            if nl>=5 or nl==1: continue
+            b = LeelaBoard(fen=fen); eng.set_fen_position(fen)
+            for k in range(nl):
+                pos[f][k] = np.moveaxis(b.lcz_features(),0,-1)
+                evs[f][k] = eng.get_evaluation()['value']/100
+                if k<nl-1: 
+                    b.push_uci(m.split()[k]); 
+                    eng.make_moves_from_current_position([m.split()[k]])
+
+            if not binary: tgs[f] = generate_target_vector(th)
+            f+=1
+        yield pos[:f], evs[:f], tgs[:f]
+
+def negative_data_generator(n_instances=1000, chunksize=100):
+    eng = Stockfish(path=path_to_binary, depth=1)
+    for _ in range(n_instances//chunksize):
+        fs, ms = get_game_fens(chunksize)
+        p, e = np.zeros((len(fs),5,8,8,112)), np.zeros((len(fs),5))
+        for i in range(len(fs)):
+            eng.set_fen_position(fs[i]); b = LeelaBoard(fen=fs[i])
+            for j, m in enumerate(ms[i]):
+                b.push_uci(m.uci()); eng.make_moves_from_current_position([m.uci()])
+                e[i][j] = eng.get_evaluation()['value']/100; p[i][j] = np.moveaxis(b.lcz_features(),0,-1)
+        yield p, e, np.zeros(len(fs))
+
+def process_df(df, ts=None):
+    '''Filtrates df. Creates mask that samples instances with 2<=len(moves)<=5, then randomly changes it by 20%
+        returns ts rows, len(df) by default'''
+    ts = ts or len(df)
+    m = df['Moves'].str.split(' ').str.len().between(2,4)  # Align with `if nl>=5 or nl==1`
+    nf = int(len(df)*0.2)
+    if nf>0: m.iloc[np.random.choice(len(df), min(nf,len(df)), replace=False)] ^= True
+    d = df[m].copy()
+    return d.sample(n=ts, replace=True) if len(d)<ts else d
+
+def generate_precomputed_data(n_batches=5, chunksize=1000, class_weight=0.1):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    files = glob.glob('lichess_db_puzzle/part_*.csv')
+    for b in range(n_batches):
+        df = pd.read_csv(np.random.choice(files), names=LI_COLS)
+        df = process_df(df)
+        np_, ne_ = int(class_weight*chunksize), chunksize-int(class_weight*chunksize)
+        px,pe,pt = next(positive_batch_generator(df, np_, np_, True))
+        nx,ne,nt = next(negative_data_generator(ne_, ne_))
+        idx = np.random.permutation(len(px)+len(nx))
+        np.savez(f'{DATA_DIR}/batch{b}.npz', x=np.concatenate([px,nx])[idx], 
+                 evals=np.concatenate([pe,ne])[idx], y=np.concatenate([pt,nt]).astype(np.int8)[idx])
+
+def get_binary_chunk(n_instances=10_000, class_weight=0.1, test=False):
+    fs = sorted(glob.glob(f'{DATA_DIR}/test.npz' if test else f'{DATA_DIR}/batch*.npz'))
+    if not fs: raise FileNotFoundError("Run generate_precomputed_data() first")
+    yielded, fid = 0, 0
+    while yielded < n_instances:
+        d = np.load(fs[fid%len(fs)], allow_pickle=True); fid += 1
+        x, e, y = d['x'], d['evals'], d['y']
+        pos, neg = np.where(y==1)[0], np.where(y==0)[0]
+        n_pos, n_neg = int(n_instances*class_weight), n_instances-int(n_instances*class_weight)
+        if len(pos)<n_pos or len(neg)<n_neg: continue
+        idx = np.concatenate([np.random.choice(pos,n_pos,replace=False), np.random.choice(neg,n_neg,replace=False)])
+        np.random.shuffle(idx)
+        for i in idx: yield x[i], e[i], [y[i]]; yielded += 1
+
+def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=False):
+    return Dataset.from_generator(get_binary_chunk, args=[n_instances, class_weight, test],
+        output_signature=(tf.TensorSpec(shape=(5,8,8,112), dtype=tf.int8), 
+                          tf.TensorSpec(shape=(5,), dtype=tf.float32), 
+                          tf.TensorSpec(shape=(1,), dtype=tf.int8)))
+
+if __name__ == '__main__':
+    generate_precomputed_data(n_batches=8, chunksize=1000)
     '''
-    Creates chunk of data for binary classifier
-    kwargs: 
-    chunksize: number of instances of both classes
-    class_weight: proportion between class 1 (positive) and class 0 (negative)
-    '''
-
-    if not IS_PROJECT:
-        raise ValueError("Trying to run data generation not from the computer")
-        
-    path_to_binary = 'stockfish/stockfish-ubuntu-x86-64-avx2'
-    engine = Stockfish(path=path_to_binary, depth=1)
-    FENs, moves = get_game_fens(chunksize)
-    if not silent: print(f"Len of FENs is {len(FENs)} len of moves is {len(moves)}")
-    n_negative = int(chunksize*(1-class_weight))
-    n_positive = int(chunksize*class_weight)
-    negative_evals = np.zeros(shape=(n_negative, 5))
-    negative_positions = np.zeros(shape=(n_negative, 5, 8, 8, 112))
-    for i in range(len(FENs)):
-
-        engine.set_fen_position(FENs[i])
-        board = LeelaBoard(fen=FENs[i])
-
-        for j in range(n_moves):
-            cur_move = moves[i][j].uci()
-            board.push_uci(cur_move)
-            engine.make_moves_from_current_position([cur_move])
-            negative_evals[i][j]=(engine.get_evaluation()['value'])/100
-            negative_positions[i][j]=np.moveaxis(board.lcz_features(), 0, -1)
-
-    high = len([name for name in os.listdir('data') if name.startswith('batch')])
-    i = np.random.randint(0, high); a = np.load(f"data/batch{i}.npz")
-    idx = np.random.randint(0, a['x'].shape[0]-n_positive)
-    positive_positions = a['x'][idx:idx+n_positive]
-    positive_evals = a['evals'][idx:idx+n_positive]
-    indices = np.arange(chunksize)
-    np.random.shuffle(indices)
-
-    if not silent: print(f'positive positions shape is {positive_positions.shape}, positive evals shape is {positive_evals.shape}\
-        ')
-
-    y = np.concat([np.zeros(shape=(n_negative, 1)), np.ones(shape=(n_positive, 1))], axis=0)
-    all_positions = np.concat([negative_positions, positive_positions], axis=0)
-    all_evals = np.concat([negative_evals, positive_evals], axis=0)
-    '''Casting to tensors and shuffling data'''
-    y = y[indices]
-    all_positions = all_positions[indices]
-    all_evals = all_evals[indices]
-    if all_positions.ndim==6:
-        all_positions = np.squeeze(all_positions, axis=0)
-    if all_evals.ndim==3:
-        all_evals = np.squeeze(all_evals, axis=0)
-    if y.ndim==3:
-        y = np.squeeze(y, axis=0)
-    if save:
-        filename_s = f"BinaryClassifierData/{filename}"
-        np.savez(file=filename_s, x=all_positions, y = y, evals=all_evals)
-        print(f"Successfully saved {filename}")
-    else:
-        return (all_positions, all_evals, y)
-
-def binary_data_generator(batch_size, generate=False, test=False):
-    if generate:
-        pos, evals, target = get_binary_chunk(batch_size)
-    else:
-        if test:
-            ar = np.load(f"{DATA_DIR}/test.npz")
-        else:
-            n = len([name for name in os.listdir(DATA_DIR)])-1
-            ar = np.load(f"{DATA_DIR}/batch{np.random.randint(0, n)}.npz")
-        pos=ar['x']; target=ar['y']; evals=ar['evals']
-    for i in range(min(pos.shape[0], batch_size)):
-        yield pos[i], evals[i], target[i]
-        
-def build_binary_dataset(batch_size, generate = False, test=False):
-    dataset = Dataset.from_generator(binary_data_generator, args=[batch_size, generate, test],
-                                    output_signature=(
-                                        tf.TensorSpec(shape=(5, 8, 8, 112), dtype=tf.int8), #positions
-                                        tf.TensorSpec(shape=(5,), dtype=tf.float32), #evals
-                                        tf.TensorSpec(shape=(1,), dtype=tf.int8) #targets
-                                        ))
-    return dataset
+    print("🧪 Running Dataset Tests...")
+    os.makedirs(DATA_DIR, exist_ok=True)
     
-if __name__=='__main__':
-    #get_binary_chunk(chunksize=100, class_weight=0.3, save=True, filename='batch0.npz')
+    # Generate minimal test data
+    
+    gen = get_binary_chunk(n_instances=100)
+    samples = [next(gen) for _ in range(10)]
+    x = np.stack([s[0] for s in samples])      # (50, 5, 8, 8, 112)
+    e = np.stack([s[1] for s in samples])      # (50, 5)
+    y = np.stack([s[2] for s in samples])      # (50,) or (50,1) depending on signature
 
-    ds = build_binary_dataset(100,test=True)
-    positions, evals, targets = iter(ds.take(1)).next()
-    #from Model import CNNLSTM
-    #model = CNNLSTM()
-    #print(positions.shape, evals.shape, targets.shape) None, 5, 8, 8 ,112
-    #model.training_run(ds)
+    
+    # Test dataset pipeline - add .batch() since from_generator yields unbatched
+    ds = build_binary_dataset(10, test=False).batch(10)
+    pos, evl, tgt = next(iter(ds))
+    assert pos.shape == (10, 5, 8, 8, 112) and tgt.shape == (10,1), f"Pos or target  shape differs from target {pos.shape}\t{tgt.shape}"
+    
+    # Test model forward pass
+    from Model import CNNLSTM
+    model = CNNLSTM()
+    preds = model.binary_call((pos, evl))
+    
+    assert preds.shape == (10, 2) and 0 <= tf.reduce_min(preds) <= tf.reduce_max(preds) <= 1
+    
+    # Test loss/metrics
+    from Perfomance import binary_loss_fn, BinaryAccuracyMetric, BinaryAUCMetric
+    loss = binary_loss_fn(tgt, preds)
+    assert not tf.math.is_nan(loss)
+    
+    acc, auc = BinaryAccuracyMetric(), BinaryAUCMetric()
+    acc.update_state(tgt, preds); auc.update_state(tgt, preds)
+    
+    print(f"✅ Loss:{loss.numpy():.4f} Acc:{acc.result().numpy():.3f} AUC:{auc.result().numpy():.3f}")'''

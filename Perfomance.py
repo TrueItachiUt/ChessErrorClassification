@@ -24,7 +24,7 @@ class BinaryAUCMetric(tf.keras.metrics.AUC):
         super().__init__(name=name, curve='PR', **kwargs)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        if y_true.shape[1]>1:
+        if len(y_true.shape)!=1 and y_true.shape[1]>1:
             y_true = tf.cast(tf.equal(y_true[:,-1], 0), tf.int8) #Multiclass labels
         if isinstance(y_pred, dict):
             y_pred = y_pred['binary']

@@ -16,6 +16,7 @@ else:
     raise ValueError(f"Invalid environmental variable information about environment.\
                         Valid options are 'colab', 'kaggle', 'local', got {var}")
 
+FILES_COUNT = 10
 DATA_DIR = 'BinaryClassifierData'
 MODEL_DIR = 'models'
 CHECKPOINT_DIR = './checkpoints'
