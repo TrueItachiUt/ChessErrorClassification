@@ -1,5 +1,4 @@
 import numpy as np, pandas as pd, os, glob, random, chess.pgn, tensorflow as tf
-from stockfish import Stockfish
 from minimal_lc0_for_research.leela_board import LeelaBoard
 from tensorflow.data import Dataset
 from config import *
@@ -30,6 +29,7 @@ def get_game_fens(n, pgn='data/lichess_elite_2024-05.pgn'):
     return FENs, moves
 
 def positive_batch_generator(df, n_instances=1000, chunksize=100, binary=True):
+    from stockfish import Stockfish
     c, eng = 0, Stockfish(path=path_to_binary, depth=1)
     for _ in range(n_instances//chunksize):
         pos, evs, tgs = (np.zeros((chunksize,5,8,8,112),np.uint8), 
@@ -53,6 +53,7 @@ def positive_batch_generator(df, n_instances=1000, chunksize=100, binary=True):
         yield pos[:f], evs[:f], tgs[:f]
 
 def negative_data_generator(n_instances=1000, chunksize=100):
+    from stockfish import Stockfish
     eng = Stockfish(path=path_to_binary, depth=1)
     for _ in range(n_instances//chunksize):
         fs, ms = get_game_fens(chunksize)
@@ -108,8 +109,7 @@ def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=Fal
                           tf.TensorSpec(shape=(1,), dtype=tf.int8)))
 
 if __name__ == '__main__':
-    generate_precomputed_data(n_batches=8, chunksize=1000)
-    '''
+    '''generate_precomputed_data(n_batches=3, chunksize=5_000)'''
     print("🧪 Running Dataset Tests...")
     os.makedirs(DATA_DIR, exist_ok=True)
     
@@ -142,4 +142,4 @@ if __name__ == '__main__':
     acc, auc = BinaryAccuracyMetric(), BinaryAUCMetric()
     acc.update_state(tgt, preds); auc.update_state(tgt, preds)
     
-    print(f"✅ Loss:{loss.numpy():.4f} Acc:{acc.result().numpy():.3f} AUC:{auc.result().numpy():.3f}")'''
+    print(f"✅ Loss:{loss.numpy():.4f} Acc:{acc.result().numpy():.3f} AUC:{auc.result().numpy():.3f}")

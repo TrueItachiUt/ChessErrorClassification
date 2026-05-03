@@ -206,7 +206,7 @@ class CNNLSTM(tf.keras.Model):
         plt.plot(batches, bin_acc, label='Accuracy', color='yellow')
         plt.plot(batches, losses, label='Loss', color='green')
         plt.xlabel('Batch')
-        plt.xticks(batches)
+        plt.xticks(batches); plt.ylim(0,5)
         plt.legend()
         display.display(fig); plt.close(fig)
         self.save()
