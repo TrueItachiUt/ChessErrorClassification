@@ -47,26 +47,23 @@ class BinaryAccuracyMetric(tf.keras.Metric):
     def update_state(self, y_true, y_pred, sample_weight=None):
 
         if isinstance(y_pred, dict):
-            y_true = ops.equal(y_true[:, -1], 0) #inverse
+            y_true = ops.equal(y_true[:, -1], 0)
             y_pred = y_pred['binary'] 
-        assert len(y_true.shape)==1 or y_true.shape[1]==1, f"Expected dense target, got shape {y_true.shape}"
-        y_pred = y_pred[:, 1]>0.5 #Threshold is 0.5
-        tp_sampl = ops.logical_and(
-            ops.equal(y_pred, True), ops.equal(y_true, True)
-        )
-        tn_sampl = ops.logical_and(
-            ops.equal(y_pred, False), ops.equal(y_true, False)
-        )
-        fp_sampl = ops.logical_and(
-            ops.equal(y_pred, True), ops.equal(y_true, False)
-        )
-        fn_sampl = ops.logical_and(
-            ops.equal(y_pred, False), ops.equal(y_true, True)
-        )
-        self.tp.assign(self.tp+ops.sum(ops.cast(tp_sampl, self.dtype)))
-        self.tn.assign(self.tn+ops.sum(ops.cast(tn_sampl, self.dtype)))
-        self.fp.assign(self.fp+ops.sum(ops.cast(fp_sampl, self.dtype)))
-        self.fn.assign(self.fn+ops.sum(ops.cast(fn_sampl, self.dtype)))
+    
+        # FIX: Squeeze to 1D to prevent (N,) vs (N,1) broadcasting
+        y_true_flat = tf.squeeze(y_true)
+        y_pred_bool = y_pred[:, 1] > 0.5
+        
+        # Element-wise boolean comparisons (both 1D now)
+        tp_sampl = tf.logical_and(y_pred_bool, tf.cast(y_true_flat, tf.bool))
+        tn_sampl = tf.logical_and(tf.logical_not(y_pred_bool), tf.logical_not(tf.cast(y_true_flat, tf.bool)))
+        fp_sampl = tf.logical_and(y_pred_bool, tf.logical_not(tf.cast(y_true_flat, tf.bool)))
+        fn_sampl = tf.logical_and(tf.logical_not(y_pred_bool), tf.cast(y_true_flat, tf.bool))
+        
+        self.tp.assign_add(tf.reduce_sum(tf.cast(tp_sampl, self.dtype)))
+        self.tn.assign_add(tf.reduce_sum(tf.cast(tn_sampl, self.dtype)))
+        self.fp.assign_add(tf.reduce_sum(tf.cast(fp_sampl, self.dtype)))
+        self.fn.assign_add(tf.reduce_sum(tf.cast(fn_sampl, self.dtype)))
 
 
     def result(self):

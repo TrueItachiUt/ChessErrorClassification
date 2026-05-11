@@ -297,14 +297,11 @@ class CNNLSTM(tf.keras.Model):
         for pos, ev, tgt in data.batch(batch_size):
             pos, ev, tgt = tf.cast(pos, tf.float32), tf.cast(ev, tf.float32), tf.convert_to_tensor(tgt)
             
-            # Forward pass returns dict {'binary': ..., 'multiclass': ...}
             preds_dict = self((pos, ev))
             
-            # Route metrics based on target shape
-            if tgt.shape[-1] == 1 or (len(tgt.shape) == 1):
-                # Binary case
-                bin_preds = preds_dict['binary']
-                # Ensure tgt is 2D for metric consistency if needed
+            # Handle binary-only mode or direct tensor return
+            if self.only_bin or not isinstance(preds_dict, dict):
+                bin_preds = preds_dict
                 if len(tgt.shape) == 1: tgt = tf.expand_dims(tgt, -1)
                 
                 b_loss = binary_loss_fn(tgt, bin_preds)
@@ -312,31 +309,29 @@ class CNNLSTM(tf.keras.Model):
                 bin_acc.update_state(tgt, bin_preds)
                 bin_auc.update_state(tgt, bin_preds)
             else:
-                # Multiclass case
-                multi_preds = preds_dict['multiclass']
-                
-                m_loss = multiclass_loss_fn(tgt, multi_preds)
-                multi_loss_met.update_state(m_loss)
-                multi_acc.update_state(tgt, multi_preds)
-        
-        mets = [bin_loss_met, bin_acc,bin_auc,multi_loss_met,multi_acc]
-        bin_loss_met_v, bin_acc_v, bin_auc_v,multi_loss_met_v,multi_acc_v = [res.numpy() if hasattr(res, 'numpy') else res 
-                                                                                    for met in mets for res in [met.result()]]
+                # Route metrics based on target shape
+                if tgt.shape[-1] == 1 or (len(tgt.shape) == 1):
+                    bin_preds = preds_dict['binary']
+                    if len(tgt.shape) == 1: tgt = tf.expand_dims(tgt, -1)
+                    
+                    b_loss = binary_loss_fn(tgt, bin_preds)
+                    bin_loss_met.update_state(b_loss)
+                    bin_acc.update_state(tgt, bin_preds)
+                    bin_auc.update_state(tgt, bin_preds)
+                else:
+                    multi_preds = preds_dict['multiclass']
+                    m_loss = multiclass_loss_fn(tgt, multi_preds)
+                    multi_loss_met.update_state(m_loss)
+                    multi_acc.update_state(tgt, multi_preds)
+    
+        mets = [bin_loss_met, bin_acc, bin_auc, multi_loss_met, multi_acc]
+        bin_loss_met_v, bin_acc_v, bin_auc_v, multi_loss_met_v, multi_acc_v = [float(met.result()) for met in mets]
         print(f"Binary   | Loss: {bin_loss_met_v:.4f} | Acc: {bin_acc_v:.3f} | AUC: {bin_auc_v:.3f}")
         print(f"Multiclass| Loss: {multi_loss_met_v:.4f} | Acc: {multi_acc_v:.3f}")
         
         return {
-            'binary':
-            {
-                'loss': bin_loss_met_v,
-                'acc': bin_acc_v,
-                'auc': bin_auc_v,
-            },
-            'multiclass':
-            {
-                'loss': multi_loss_met_v,
-                'acc': multi_acc_v
-            }
+            'binary': {'loss': bin_loss_met_v, 'acc': bin_acc_v, 'auc': bin_auc_v},
+            'multiclass': {'loss': multi_loss_met_v, 'acc': multi_acc_v}
         }
 
     
