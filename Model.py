@@ -320,8 +320,8 @@ class CNNLSTM(tf.keras.Model):
                 multi_acc.update_state(tgt, multi_preds)
         
         mets = [bin_loss_met, bin_acc,bin_auc,multi_loss_met,multi_acc]
-        bin_loss_met_v, bin_acc_v, bin_auc_v,multi_loss_met_v,multi_acc_v = [met.result().numpy() if met.result().hasattr('numpy') else met.result() 
-                                                                            for met in mets]
+        bin_loss_met_v, bin_acc_v, bin_auc_v,multi_loss_met_v,multi_acc_v = [res.numpy() if hasattr(res, 'numpy') else res 
+                                                                                    for met in mets for res in [met.result()]]
         print(f"Binary   | Loss: {bin_loss_met_v:.4f} | Acc: {bin_acc_v:.3f} | AUC: {bin_auc_v:.3f}")
         print(f"Multiclass| Loss: {multi_loss_met_v:.4f} | Acc: {multi_acc_v:.3f}")
         
