@@ -84,10 +84,18 @@ class AccuracyMetric(tf.keras.metrics.Accuracy):
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         if isinstance(y_pred, dict): y_pred = y_pred['multiclass']
-        mask = y_true[:, -1]==0
-        targets_one_hot = (y_true[mask])[:, :-1]
-        y_pred = y_pred[mask]
-        super().update_state(targets_one_hot, y_pred) 
+        n = (y_true.shape)[1]
+        if n==num_classes+1:
+            #Raw data with no class column
+            mask = y_true[:, -1]==0
+            y_true = (y_true[mask])[:, :-1]
+            y_pred = y_pred[mask]
+        elif n==num_classes:
+            pass
+        else:
+            raise ValueError(f"Passed target of unsupported shape : expected either {num_classes} (pure multiclass\
+                             one hot) or {num_classes+1} (raw detection data), got {n}")
+        super().update_state(y_true, y_pred) 
 
     def result(self):
         return super().result()
@@ -95,7 +103,7 @@ class AccuracyMetric(tf.keras.metrics.Accuracy):
 
 #bfce = BinaryFocalCrossentropy(apply_class_balancing=True, alpha=0.9) #Class 1 is 10 times more important than class 0 
 bce = tf.keras.losses.BinaryCrossentropy(reduction=None)
-cce = CategoricalCrossentropy(reduction='none') #To handle loss
+cce = CategoricalCrossentropy() #To handle loss
 
 
 @tf.function
@@ -115,38 +123,18 @@ def multiclass_loss_fn(y_true, y_pred):
     '''Loss for multiclass output probas and multiclass one-hot target'''
     if len(tf.shape(y_true)) == 1:
         y_true = tf.expand_dims(y_true, axis=0)
-
     if len(y_pred.shape) == 1:
-        y_pred = tf.expand_dims(multiclass_probas, axis=0)
-
-    original_batch_size = tf.shape(y_true)[0]
-    
-    # Multiclass part
-    mask = tf.cast(tf.equal(y_true[:, -1], 0), tf.bool) #Take only instances when last column is zero
-    
-    multiclass_targets = tf.boolean_mask(y_true[:, :-1], mask)
-
-    
-
-    if tf.shape(y_pred)[0]==original_batch_size:  # If some value was used to fill no class instances or 
-                                                             #predicted multiclass for all instances
-        y_pred = tf.boolean_mask(y_pred, mask)
-    
-    #print(f"Mask shape is {tf.shape(mask)}, after masking multiclass probas is {tf.shape(multiclass_probas)}\
-        #targets are {tf.shape(multiclass_targets)}")
-
-    per_sample_losses = cce(multiclass_targets, y_pred)
-    
-    # Суммируем ошибки и делим на ИСХОДНЫЙ размер батча
-    # Это сохраняет масштаб градиента стабильным независимо от количества объектов
-    return tf.reduce_sum(per_sample_losses) / tf.cast(original_batch_size, tf.float32)
+        y_pred = tf.expand_dims(y_pred, axis=0)
+    tf.debugging.assert_equal(tf.shape(y_true)[1], num_classes, message="Target shape mismatch")
+    return cce(y_true, y_pred)
 
 def detection_loss(y_true, y_pred):
     bin_y_true = tf.cast(tf.equal(y_true[:, -1], 0), tf.int8) #In multiclass classification last column is 1 if 
                                                           # 'no class', so we need to inverse it for binary detection
+    mult_y_true = y_true[:, :-1]
     return {
         'binary': binary_loss_fn(bin_y_true, y_pred['binary']),
-        'multiclass': multiclass_loss_fn(y_true , y_pred['multiclass'])
+        'multiclass': multiclass_loss_fn(mult_y_true , y_pred['multiclass'])
     }
 
 #def fit(self, X, y, eval_set: tuple = None):
@@ -197,6 +185,10 @@ if __name__=='__main__':
     binary_acc = BinaryAccuracyMetric()
     binary_acc.update_state(target, preds)
     print(f"Binary accuracy is {binary_acc.result()}")
+    if binary_acc.result() is np.nan:
+        
+        print(f"Binary: \n preds {preds['binary'][:, 1]} \n\n target {bin_target}")
+
     multiclass_acc = AccuracyMetric()
     multiclass_acc.update_state(target, preds)
     print(f"Class prediction accuracy is {multiclass_acc.result()}")

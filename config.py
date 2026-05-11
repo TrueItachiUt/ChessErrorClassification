@@ -16,8 +16,9 @@ else:
     raise ValueError(f"Invalid environmental variable information about environment.\
                         Valid options are 'colab', 'kaggle', 'local', got {var}")
 
-FILES_COUNT = 10
-DATA_DIR = 'BinaryClassifierData'
+FILES_COUNT = 20
+BINARY_DATA_DIR = 'BinaryClassifierData'
+MULTICLASS_DATA_DIR = 'data'
 MODEL_DIR = 'models'
 CHECKPOINT_DIR = './checkpoints'
 
@@ -25,7 +26,8 @@ MODEL_FILE_NAME = 'tf_model_19x256.keras'
 CHECKPOINT_FILE_NAME = 'last.weights.h5'
 
 if IS_COLAB:
-    DATA_DIR = f'{path_col}Data'
+    BINARY_DATA_DIR = f'{path_col}Data/Binary'
+    MULTICLASS_DATA_DIR = f'{path_col}Data/Multiclass'
     MODEL_DIR = f'{path_col}Models'
     CHECKPOINT_DIR = f'{path_col}Models'
 

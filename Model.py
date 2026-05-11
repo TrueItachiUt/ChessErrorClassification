@@ -53,7 +53,7 @@ class CNNLSTM(tf.keras.Model):
         self.multiclass_head = tf.keras.models.Sequential([
             tf.keras.layers.Dense(units=32, activation='tanh', name='multiclass_head_dense1'),
             tf.keras.layers.Dense(units=16, activation='tanh', name='multiclass_head_dense2'),
-            tf.keras.layers.Dense(units=self.n_classes-1, activation='softmax', name='multiclass_head_dense3')
+            tf.keras.layers.Dense(units=self.n_classes, activation='softmax', name='multiclass_head_dense3')
         ], name='multiclass_classifier_head')
         
 
@@ -66,7 +66,7 @@ class CNNLSTM(tf.keras.Model):
         self.build(input_shape=(None, 8, 8, 112))
 
         if os.path.exists(path_to_checkpoint):
-            self.load_weights(path_to_checkpoint)
+            self.load_weights(path_to_checkpoint, skip_mismatch=True)
 
     def _process_CNN(self, inputs):
         """
@@ -174,39 +174,45 @@ class CNNLSTM(tf.keras.Model):
             return self.binary_classifier_head(after_rnn)
 
 
-    def training_run(self, ds: tf.data.Dataset, batch_size=20):
+    def training_run(self, ds: tf.data.Dataset, batch_size=20, binary=True):
         '''Runs training across entire ds and saves checkpoint. Visualizes progress after finishing'''
-
         if os.path.exists(path_to_checkpoint):
             self.load_weights(path_to_checkpoint)
         else:
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-        self.only_bin = True
-        binary_trainable = self._core() + self.binary_classifier_head.trainable_variables
-        bacm = BinaryAccuracyMetric()
-        bin_acc = []
-        losses = []
-        
+
+        self.only_bin = binary
+        if binary:
+            trainable = self._core() + self.binary_classifier_head.trainable_variables
+            opt = self.binary_optimizer
+            loss_fn = binary_loss_fn
+            metric = BinaryAccuracyMetric()
+            get_preds = lambda x: self.binary_call(x)
+        else:
+            trainable = self._core() + self.multiclass_head.trainable_variables
+            opt = self.multiclass_optimizer
+            loss_fn = multiclass_loss_fn
+            metric = AccuracyMetric()
+            get_preds = lambda x: self(x)['multiclass']
+
+        met_vals, losses = [], []
         for batch, (positions, evals, targets) in enumerate(ds.batch(batch_size)):
             with tf.GradientTape() as tape:
-                preds = self.binary_call((positions,evals))
-                loss = binary_loss_fn(targets, preds)
-
-            grads = tape.gradient(loss, binary_trainable)
-            self.binary_optimizer.apply_gradients(zip(grads, binary_trainable))
-            
-            bacm.update_state(targets, preds)
-            bin_acc.append(bacm.result())
+                preds = get_preds((positions, evals))
+                loss = loss_fn(targets, preds)
+            grads = tape.gradient(loss, trainable)
+            opt.apply_gradients(zip(grads, trainable))
+            metric.update_state(targets, preds)
+            met_vals.append(metric.result())
             losses.append(loss.numpy())
-            if (batch%5==0):
-                print(f'Batch {batch} | Loss {loss.numpy()} | Balanced Accuracy {bacm.result()}')
+            if batch%5==0:
+                print(f'Batch {batch} | Loss {loss.numpy()} | {"Balanced Accuracy" if binary else "Accuracy"} {metric.result()}')
 
         fig = plt.figure(figsize=(10, 6))
-        batches = range(1, len(bin_acc) + 1)
-        plt.plot(batches, bin_acc, label='Accuracy', color='yellow')
+        batches = range(1, len(met_vals) + 1)
+        plt.plot(batches, met_vals, label='Accuracy', color='yellow')
         plt.plot(batches, losses, label='Loss', color='green')
-        plt.xlabel('Batch')
-        plt.xticks(batches); plt.ylim(0,5)
+        plt.xlabel('Batch'); plt.xticks(batches); plt.ylim(0,5)
         plt.legend()
         display.display(fig); plt.close(fig)
         self.save()
@@ -279,14 +285,68 @@ class CNNLSTM(tf.keras.Model):
                     layer_grads = grads[i]
                     print(f"{var.name} grad norm: {tf.linalg.global_norm([layer_grads]):.4f}")
                     break
+    def evaluate(self, data, batch_size=20):
+        '''Evaluates model on dataset. Prints and returns metrics.'''
+        bin_loss_met = LossMetric()
+        bin_acc = BinaryAccuracyMetric()
+        bin_auc = BinaryAUCMetric()
+        
+        multi_loss_met = LossMetric()
+        multi_acc = AccuracyMetric()
+        
+        for pos, ev, tgt in data.batch(batch_size):
+            pos, ev, tgt = tf.cast(pos, tf.float32), tf.cast(ev, tf.float32), tf.convert_to_tensor(tgt)
+            
+            # Forward pass returns dict {'binary': ..., 'multiclass': ...}
+            preds_dict = self((pos, ev))
+            
+            # Route metrics based on target shape
+            if tgt.shape[-1] == 1 or (len(tgt.shape) == 1):
+                # Binary case
+                bin_preds = preds_dict['binary']
+                # Ensure tgt is 2D for metric consistency if needed
+                if len(tgt.shape) == 1: tgt = tf.expand_dims(tgt, -1)
+                
+                b_loss = binary_loss_fn(tgt, bin_preds)
+                bin_loss_met.update_state(b_loss)
+                bin_acc.update_state(tgt, bin_preds)
+                bin_auc.update_state(tgt, bin_preds)
+            else:
+                # Multiclass case
+                multi_preds = preds_dict['multiclass']
+                
+                m_loss = multiclass_loss_fn(tgt, multi_preds)
+                multi_loss_met.update_state(m_loss)
+                multi_acc.update_state(tgt, multi_preds)
+        
+        mets = [bin_loss_met, bin_acc,bin_auc,multi_loss_met,multi_acc]
+        bin_loss_met_v, bin_acc_v, bin_auc_v,multi_loss_met_v,multi_acc_v = [met.result().numpy() if met.result().hasattr('numpy') else met.result() 
+                                                                            for met in mets]
+        print(f"Binary   | Loss: {bin_loss_met_v:.4f} | Acc: {bin_acc_v:.3f} | AUC: {bin_auc_v:.3f}")
+        print(f"Multiclass| Loss: {multi_loss_met_v:.4f} | Acc: {multi_acc_v:.3f}")
+        
+        return {
+            'binary':
+            {
+                'loss': bin_loss_met_v,
+                'acc': bin_acc_v,
+                'auc': bin_auc_v,
+            },
+            'multiclass':
+            {
+                'loss': multi_loss_met_v,
+                'acc': multi_acc_v
+            }
+        }
 
     
 if __name__=='__main__':
     model = CNNLSTM()
     model([np.random.rand(5,8,8,112), np.random.rand(5)])
     #model.summary()
-    ar = np.load(f'{DATA_DIR}/test.npz')
+    ar = np.load(f'{BINARY_DATA_DIR}/test.npz', mmap_mode='r')
     positions = ar['x']; evals = ar['evals'].astype(np.float32); target = ar['y']
-    ds = build_binary_dataset(batch_size=200)
+    ds = build_binary_dataset(n_instances=200)
+    model.evaluate(ds)
     #print(positions.shape, evals.shape, target.shape)
-    model.inspect_binary_predicting(ds)
+    #model.inspect_binary_predicting(ds)
