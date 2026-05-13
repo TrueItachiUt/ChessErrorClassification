@@ -148,7 +148,7 @@ def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test
                           tf.TensorSpec(shape=(num_classes,), dtype=tf.uint8)))
 
 if __name__ == '__main__':
-    #generate_precomputed_data(n_batches=1, chunksize=50, binary=True, filename='test.npz')
+    #generate_precomputed_data(n_batches=2, chunksize=5000, binary=True)
     print("🧪 Running Dataset Tests...")
     
     # Generate minimal test data
