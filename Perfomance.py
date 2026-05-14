@@ -74,7 +74,7 @@ class BinaryAccuracyMetric(tf.keras.Metric):
         return (TPR+TNR)/2
     
 
-class AccuracyMetric(tf.keras.metrics.Accuracy):
+class AccuracyMetric(tf.keras.metrics.CategoricalAccuracy):
 
     def __init__(self, name='CustomAccuracy', **kwargs):
         super().__init__(name=name, **kwargs)

@@ -16,7 +16,7 @@ else:
     raise ValueError(f"Invalid environmental variable information about environment.\
                         Valid options are 'colab', 'kaggle', 'local', got {var}")
 
-FILES_COUNT = 40
+FILES_COUNT = 0
 BINARY_DATA_DIR = 'BinaryClassifierData'
 MULTICLASS_DATA_DIR = 'data'
 MODEL_DIR = 'models'

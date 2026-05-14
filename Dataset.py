@@ -89,10 +89,10 @@ def process_df(df, ts=None):
     d = df[m].copy()
     return d.sample(n=ts, replace=True) if len(d)<ts else d
 
-def generate_precomputed_data(n_batches=1, chunksize=1000, class_weight=0.1, binary:bool=True, filename=None):
+def generate_precomputed_data(n_batches=1, chunksize=1000, class_weight=0.1, binary:bool=True, filename=None, val=False):
     DATA_DIR = BINARY_DATA_DIR if binary else MULTICLASS_DATA_DIR
     os.makedirs(DATA_DIR, exist_ok=True)
-    files = glob.glob('lichess_db_puzzle/part_*.csv')
+    files = glob.glob('lichess_db_puzzle/part_*.csv') if not val else glob.glob('lichess_db_puzzle/val*.csv')
     indices = [int(s[s.find('batch')+5:s.find('.')]) for s in glob.glob(f'{DATA_DIR}/batch*.npz')]
     m = max(indices) if len(indices)!=0 else 0
     for b in range(n_batches):
@@ -115,10 +115,13 @@ def generate_precomputed_data(n_batches=1, chunksize=1000, class_weight=0.1, bin
 
 
 
-def get_chunk(n_instances=10_000, class_weight=0.1, binary=True, test=False):
+def get_chunk(n_instances=10_000, class_weight=0.1, binary=True, filename=None):
     DATA_DIR = BINARY_DATA_DIR if binary else MULTICLASS_DATA_DIR
-    fs = sorted(glob.glob(f'{DATA_DIR}/test.npz' if test else f'{DATA_DIR}/batch*.npz'))
-    if not fs: raise FileNotFoundError("Run generate_precomputed_data() first")
+    if filename is not None and isinstance(filename, bytes):
+        filename = filename.decode('utf-8')
+    print(f'{DATA_DIR}/{str(filename)}' if filename else f'{DATA_DIR}/batch*.npz')
+    fs = sorted(glob.glob(f'{DATA_DIR}/{filename}' if filename else f'{DATA_DIR}/batch*.npz'))
+    if not fs: raise FileNotFoundError("Hadnt found any satisfying files, maybe run generate_precomputed_data() first?")
     
     d = np.load(fs[0], allow_pickle=True, mmap_mode='r')
     x, e, y = d['x'][:n_instances+1], d['evals'][:n_instances+1], d['y'][:n_instances+1]
@@ -134,21 +137,24 @@ def get_chunk(n_instances=10_000, class_weight=0.1, binary=True, test=False):
     for i in idx[:n_instances]:
         yield x[i], e[i], ([y[i]] if binary else y[i])
 
-def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=False):
-    return Dataset.from_generator(get_chunk, args=[n_instances, class_weight, True, test],
+def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=False, filename=None):
+    if test: filename='test.npz'
+    return Dataset.from_generator(get_chunk, args=[n_instances, class_weight, True, filename],
         output_signature=(tf.TensorSpec(shape=(5,8,8,112), dtype=tf.int8), 
                           tf.TensorSpec(shape=(5,), dtype=tf.float32), 
                           tf.TensorSpec(shape=(1,), dtype=tf.int8)))
 
 
-def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test=False):
-    return Dataset.from_generator(get_chunk, args=[n_instances, class_weight, False, test],
+def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test=False, filename=None):
+    if test: filename='test.npz'
+    return Dataset.from_generator(get_chunk, args=[n_instances, class_weight, False, filename],
         output_signature=(tf.TensorSpec(shape=(5,8,8,112), dtype=tf.int8), 
                           tf.TensorSpec(shape=(5,), dtype=tf.float32),
                           tf.TensorSpec(shape=(num_classes,), dtype=tf.uint8)))
 
 if __name__ == '__main__':
-    #generate_precomputed_data(n_batches=2, chunksize=5000, binary=True)
+    generate_precomputed_data(n_batches=1, chunksize=1000,binary=False, filename='batch0.npz')
+    '''
     print("🧪 Running Dataset Tests...")
     
     # Generate minimal test data
@@ -194,4 +200,4 @@ if __name__ == '__main__':
     # ⚠️ Loss/metric tests moved to unittest.ipynb to avoid circular import with Perfomance.py
     print(f"✅ Dataset pipeline: OK | Model forward: OK")
     print(f"   Binary pred shape: {preds.shape} | Multiclass pred shape: {mtl_preds['multiclass'].shape}")
-    print(f"   Run unittest.ipynb for loss/metric validation")
+    print(f"   Run unittest.ipynb for loss/metric validation")'''
