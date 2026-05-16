@@ -64,7 +64,7 @@ def negative_data_generator(n_instances=1000, chunksize=100, binary=True):
         fs, ms = get_game_fens(chunksize)
         p, e = np.zeros((chunksize,5,8,8,112)), np.zeros((chunksize,5))
         if not binary:
-            target = np.zeros(shape=(chunksize, num_classes))
+            target = np.zeros(shape=(chunksize, num_classes+1))
             target[:, -1]=1 #No class is true
         else:
             target = np.zeros(chunksize)
@@ -115,17 +115,16 @@ def generate_precomputed_data(n_batches=1, chunksize=1000, class_weight=0.1, bin
 
 
 
-def get_chunk(n_instances=10_000, class_weight=0.1, binary=True, filename=None):
+def get_chunk(n_instances=10_000, class_weight=0.1, binary=True, filename=''):
     DATA_DIR = BINARY_DATA_DIR if binary else MULTICLASS_DATA_DIR
-    if filename is not None and isinstance(filename, bytes):
+
+    if not filename=='' and isinstance(filename, bytes):
         filename = filename.decode('utf-8')
-    print(f'{DATA_DIR}/{str(filename)}' if filename else f'{DATA_DIR}/batch*.npz')
+
     fs = sorted(glob.glob(f'{DATA_DIR}/{filename}' if filename else f'{DATA_DIR}/batch*.npz'))
     if not fs: raise FileNotFoundError("Hadnt found any satisfying files, maybe run generate_precomputed_data() first?")
-    
     d = np.load(fs[0], allow_pickle=True, mmap_mode='r')
     x, e, y = d['x'][:n_instances+1], d['evals'][:n_instances+1], d['y'][:n_instances+1]
-    
     if binary:
         pos, neg = np.where(y==1)[0], np.where(y==0)[0]
         n_pos, n_neg = int(n_instances*class_weight), n_instances-int(n_instances*class_weight)
@@ -137,7 +136,7 @@ def get_chunk(n_instances=10_000, class_weight=0.1, binary=True, filename=None):
     for i in idx[:n_instances]:
         yield x[i], e[i], ([y[i]] if binary else y[i])
 
-def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=False, filename=None):
+def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=False, filename=''):
     if test: filename='test.npz'
     return Dataset.from_generator(get_chunk, args=[n_instances, class_weight, True, filename],
         output_signature=(tf.TensorSpec(shape=(5,8,8,112), dtype=tf.int8), 
@@ -145,7 +144,7 @@ def build_binary_dataset(n_instances=10_000, class_weight=class_weight, test=Fal
                           tf.TensorSpec(shape=(1,), dtype=tf.int8)))
 
 
-def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test=False, filename=None):
+def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test=False, filename=''):
     if test: filename='test.npz'
     return Dataset.from_generator(get_chunk, args=[n_instances, class_weight, False, filename],
         output_signature=(tf.TensorSpec(shape=(5,8,8,112), dtype=tf.int8), 
@@ -153,8 +152,7 @@ def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test
                           tf.TensorSpec(shape=(num_classes,), dtype=tf.uint8)))
 
 if __name__ == '__main__':
-    generate_precomputed_data(n_batches=1, chunksize=1000,binary=False, filename='batch0.npz')
-    '''
+    #generate_precomputed_data(n_batches=1, chunksize=1000,binary=False, filename='batch0.npz')
     print("🧪 Running Dataset Tests...")
     
     # Generate minimal test data
@@ -200,4 +198,4 @@ if __name__ == '__main__':
     # ⚠️ Loss/metric tests moved to unittest.ipynb to avoid circular import with Perfomance.py
     print(f"✅ Dataset pipeline: OK | Model forward: OK")
     print(f"   Binary pred shape: {preds.shape} | Multiclass pred shape: {mtl_preds['multiclass'].shape}")
-    print(f"   Run unittest.ipynb for loss/metric validation")'''
+    print(f"   Run unittest.ipynb for loss/metric validation")
