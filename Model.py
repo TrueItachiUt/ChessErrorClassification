@@ -4,7 +4,7 @@ import os
 from tensorflow.keras.layers import Bidirectional
 import keras
 from tqdm import tqdm
-from IPython import display
+from IPython.display import display
 import matplotlib.pyplot as plt
 from typing import Union
 from Perfomance import *
@@ -214,7 +214,7 @@ class CNNLSTM(tf.keras.Model):
         plt.plot(batches, losses, label='Loss', color='green')
         plt.xlabel('Batch'); plt.xticks(batches); plt.ylim(0,5)
         plt.legend()
-        display.display(fig); plt.close(fig)
+        display(fig); plt.close(fig)
         self.save()
 
     def save(self):

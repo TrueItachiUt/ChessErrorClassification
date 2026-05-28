@@ -16,7 +16,7 @@ else:
     raise ValueError(f"Invalid environmental variable information about environment.\
                         Valid options are 'colab', 'kaggle', 'local', got {var}")
 
-FILES_COUNT = 0
+FILES_COUNT = 50
 BINARY_DATA_DIR = 'BinaryClassifierData'
 MULTICLASS_DATA_DIR = 'data'
 MODEL_DIR = 'models'
@@ -35,3 +35,5 @@ if IS_KAGGLE:
     DATA_DIR = f'{path_kaggle}/datasets/itachiut/binaryclassifierdata'
     MODEL_DIR = f'{path_kaggle}/itachiut/cnnlstm/tensorflow2/default/1'
     CHECKPOINT_DIR = MODEL_DIR
+    
+PATH_TO_STOCKFISH = 'stockfish/stockfish-ubuntu-x86-64-avx2'

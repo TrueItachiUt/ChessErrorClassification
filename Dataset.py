@@ -4,10 +4,12 @@ from tensorflow.data import Dataset
 from config import *
 
 file_number = 5
+threshold = 0.6
+error_delta = 1.5 #Evaluation delta Increasing this parameter will increase tolerance to errors
 class_weight=0.1
-path_to_binary = 'stockfish/stockfish-ubuntu-x86-64-avx2'
+path_to_binary = PATH_TO_STOCKFISH
 target_lichess_classes = ['exposedKing','sacrifice','hangingPiece','fork','captureTheDefender','pin','quietMove','intermezzo','deflection']
-additional_target_classes = ['planlessGame']
+additional_target_classes = []
 targets = target_lichess_classes + additional_target_classes
 num_classes = len(targets)
 LI_COLS = ['PuzzleId', 'FEN', 'Moves', 'Rating', 'RatingDeviation', 'Popularity', 'NbPlays', 'Themes', 'GameUrl', 'OpeningTags']
@@ -152,7 +154,8 @@ def build_multiclass_dataset(n_instances=10_000, class_weight=class_weight, test
                           tf.TensorSpec(shape=(num_classes,), dtype=tf.uint8)))
 
 if __name__ == '__main__':
-    #generate_precomputed_data(n_batches=1, chunksize=1000,binary=False, filename='batch0.npz')
+    generate_precomputed_data(n_batches=3, chunksize=5000,binary=False)
+    '''
     print("🧪 Running Dataset Tests...")
     
     # Generate minimal test data
@@ -199,3 +202,4 @@ if __name__ == '__main__':
     print(f"✅ Dataset pipeline: OK | Model forward: OK")
     print(f"   Binary pred shape: {preds.shape} | Multiclass pred shape: {mtl_preds['multiclass'].shape}")
     print(f"   Run unittest.ipynb for loss/metric validation")
+    '''
