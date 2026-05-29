@@ -1,6 +1,6 @@
 data/
 models/weights-256_10.pb
-stockfish*
+!stockfish/stockfish-ubuntu-x86-64-avx2
 lichess_db_puzzle/
 BinaryClassifierData/
 test.ipynb
