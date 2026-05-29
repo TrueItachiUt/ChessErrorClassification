@@ -7,7 +7,7 @@ from Dataset import threshold, targets
 import tensorflow as tf
 
 def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_class: int = None, demonstrate: bool = False):
-    delay = 0.8
+    delay = 2
     
     # 1. Prepare & Infer
     positions, evals = prepare_for_model([fen], [moves])
@@ -36,6 +36,7 @@ def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_
             display(board)
             clear_output(wait=True)
             time.sleep(delay)
+        display(board)
 
     # 5. Console Output
     print(f"Moves: {' '.join(moves)}")
