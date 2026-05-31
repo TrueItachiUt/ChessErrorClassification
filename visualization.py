@@ -6,6 +6,7 @@ from backend_tools import prepare_for_model, dnn_model, to_uci_moves, check_data
 from Dataset import threshold, targets
 import tensorflow as tf
 
+
 def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_class: int = None, demonstrate: bool = False):
     delay = 2
     
@@ -13,6 +14,7 @@ def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_
     positions, evals = prepare_for_model([fen], [moves])
     print(f"evals {evals}\n\n")
     preds = dnn_model((positions, evals))
+    print(preds['multiclass'])
     
     # 2. Extract Binary Probability
     bin_prob = float(preds['binary'][0][1].numpy())
@@ -136,7 +138,6 @@ if __name__ == "__main__":
     test_fen = "rn2k1nr/pp2ppb1/6pp/q2N4/3P3B/3QP3/PP3PPP/R3K1NR w KQkq - 1 11"
     test_moves = "d3c3 a5d5 c3c8 d5d8 c8b7 b8d7".split()
     test_target = 2
-    
     show_prediction(test_fen, test_moves, target_bin=True, target_class=test_target, demonstrate=False)
     #interaction(test_fen, test_moves)
     print(f"Correct class is {targets[test_target]}")

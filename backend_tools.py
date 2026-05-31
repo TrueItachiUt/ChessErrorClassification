@@ -33,7 +33,7 @@ def generate_moves(fen, n_moves=4):
             break
             
         try:
-            move_probs, _ = inference.inference_each(maia2_model, prepared, board.fen(), 1900, 1900)
+            move_probs, _ = inference.inference_each(maia2_model, prepared, board.fen(), 1900, 1900, temperature=0)
             move = max(move_probs, key=move_probs.get)
         except Exception:
             move = legal[0].uci()  # Deterministic fallback on inference failure
