@@ -12,9 +12,7 @@ def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_
     
     # 1. Prepare & Infer
     positions, evals = prepare_for_model([fen], [moves])
-    print(f"evals {evals}\n\n")
     preds = dnn_model((positions, evals))
-    print(preds['multiclass'])
     
     # 2. Extract Binary Probability
     bin_prob = float(preds['binary'][0][1].numpy())
@@ -50,21 +48,23 @@ def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_
         print("Prediction: No tactical strike detected.")
         
     if target_bin is not None:
-        print(f"Target: Strike" if target_bin else "Target: Clean")
+        print(f"Blunder" if target_bin else "Nothing")
         if target_class is not None and 0 <= target_class < len(targets):
             print(f"Target Class: {targets[target_class]}")
 
 
-def human_readable_report(decision_results: list) -> list[dict]:
+def human_readable_report(decision_results) -> list[dict]:
     """Converts raw decision() output to a structured, frontend-ready format."""
     scenario_labels = {
         "Blunder_opp_used": "Opponent capitalized on your mistake",
         "Blunder_opp_not_used": "Mistake made, opponent missed it",
         "Missed_blunder": "You missed opponent's mistake"
     }
-    
     report = []
-    for idx, (is_strike, cls_idx, scenario) in enumerate(decision_results):
+    # FIX: Handle both list (from decision) and dict (from process_clean_game)
+    items = decision_results.items() if isinstance(decision_results, dict) else enumerate(decision_results)
+    
+    for idx, (is_strike, cls_idx, scenario) in items:
         tactic_class = None
         if is_strike and cls_idx is not None and 0 <= cls_idx < len(targets):
             tactic_class = targets[cls_idx]

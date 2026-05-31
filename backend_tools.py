@@ -57,7 +57,6 @@ def prepare_for_model(fens, moves, evs=None):
             k = np.array(evs[i])
             if len(k)<5:
                 k = np.pad(k, (0, 5-len(k)))
-                print(k)
             tt.append(k)
         evs = np.array(tt)
     

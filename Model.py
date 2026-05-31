@@ -302,7 +302,10 @@ class CNNLSTM(tf.keras.Model):
             # Handle binary-only mode or direct tensor return
             if self.only_bin or not isinstance(preds_dict, dict):
                 bin_preds = preds_dict
-                if len(tgt.shape) == 1: tgt = tf.expand_dims(tgt, -1)
+                # FIX: Convert multiclass targets to binary if necessary
+                if len(tgt.shape) > 1 and tgt.shape[-1] > 1:
+                    tgt = tf.cast(tf.equal(tgt[:, -1], 0), tf.float32)
+                if len(tgt.shape) > 1: tgt = tf.squeeze(tgt, axis=-1)
                 
                 b_loss = binary_loss_fn(tgt, bin_preds)
                 bin_loss_met.update_state(b_loss)
