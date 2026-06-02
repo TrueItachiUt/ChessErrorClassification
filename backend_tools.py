@@ -264,7 +264,7 @@ def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
     best_moves = []
     
     evals_dict.append(engine.get_evaluation())
-    #evals[i] represents evaluation after move i in 0-based index; for example evals[0] is evaluation after 1.e4
+    #evals[i] represents evaluation after move i in 1-based index; for example evals[1] is evaluation after 1.e4
     for m in moves:
         best_moves.append(engine.get_best_move())
         engine.make_moves_from_current_position([m])
@@ -275,7 +275,12 @@ def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
     error_keys = []
     for i in range(3, n-2):
         val_before = eval_to_cp(evals_dict[i]) / 100
-        val_after = -eval_to_cp(evals_dict[i+1]) / 100     #Stockfish yields evaluation from side of player whose move it is
+        val_after = eval_to_cp(evals_dict[i+1]) / 100
+        #Fixing stockfish evaluation from perspective of player whose move it is
+        if (i%2==0): 
+            val_before*=-1
+        else: 
+            val_after*=-1
         if abs(val_after - val_before) >= error_delta:
             error_keys.append(i)
             
@@ -310,10 +315,10 @@ def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
                 tactic_class = cls_idx
                 correct_move = best_moves[i]
 
-        eval_before = evals_dict[i - 1].copy()
-        eval_after = evals_dict[i].copy()
+        eval_before = evals_dict[i].copy()
+        eval_after = evals_dict[i+1].copy()
         
-        if side == 'Белые':
+        if side == 'Черные':
             eval_before['value'] *= -1
         else:
             eval_after['value'] *= -1
