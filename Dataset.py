@@ -4,8 +4,8 @@ from tensorflow.data import Dataset
 from config import *
 
 file_number = 5
-threshold = 0.6
-error_delta = 1.5 #Evaluation delta Increasing this parameter will increase tolerance to errors
+threshold = 0.8
+error_delta = 3 #Evaluation delta Increasing this parameter will increase tolerance to errors
 class_weight=0.1
 path_to_binary = PATH_TO_STOCKFISH
 target_lichess_classes = ['exposedKing','sacrifice','hangingPiece','fork','captureTheDefender','pin','quietMove','intermezzo','deflection']

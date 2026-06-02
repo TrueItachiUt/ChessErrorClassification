@@ -10,18 +10,43 @@ from stockfish import Stockfish
 
 tf.config.experimental.enable_op_determinism()
 
+def load_models():
+    global maia2_model, dnn_model, prepared
+    maia2_model = model.from_pretrained(type="rapid", device="cpu")
+    dnn_model = CNNLSTM()
+    prepared = inference.prepare()
+
+
+def eval_to_cp(eval_dict: dict) -> float:
+    """Converts Stockfish evaluation dict to centipawns for delta calculations."""
+    if not eval_dict: return 0.0
+    if eval_dict['type'] == 'mate':
+        return 100000 * (1 if eval_dict['value'] > 0 else -1)
+    return eval_dict['value']
+
+def format_eval(eval_dict: dict) -> str:
+    """Formats Stockfish evaluation dict to a human-readable string."""
+    if not eval_dict: return "N/A"
+    if eval_dict['type'] == 'mate':
+        return f"+M{eval_dict['value']}" if eval_dict['value'] > 0 else f"-M{abs(eval_dict['value'])}"
+    val = eval_dict['value'] / 100
+    return f"{val:+.2f}"
+
 _eng_cache = None
 def _get_engine():
     global _eng_cache
     if _eng_cache is None:
-        _eng_cache = Stockfish(path=PATH_TO_STOCKFISH, depth=1)
+        _eng_cache = Stockfish(path=PATH_TO_STOCKFISH, depth=4)
     return _eng_cache
 
-maia2_model = model.from_pretrained(type="rapid", device="cpu")
-dnn_model = CNNLSTM()
-prepared = inference.prepare()
+maia2_model = None
+dnn_model = None
+prepared = None
 
 def generate_moves(fen, n_moves=4):
+
+    if maia2_model is None:
+        load_models()
     board = Board(fen=fen)
     moves = []
     for _ in range(n_moves):
@@ -46,6 +71,7 @@ def generate_moves(fen, n_moves=4):
 
 
 def prepare_for_model(fens, moves, evs=None):
+
     batch_size = len(fens)
     a = np.zeros((batch_size, 5, 8, 8, 112))
     f = evs is None
@@ -98,6 +124,8 @@ def decision(fens: list[str], moves: list, evals=None
                 "Blunder_opp_not_used" (player made a mistake, opponent didnt use it),    
                 "Missed_blunder" (player didnt use opponents mistake)
     '''
+    if dnn_model is None or maia2_model is None:
+        load_models()
 
     batch_size = len(fens)
 
@@ -219,34 +247,88 @@ def decision(fens: list[str], moves: list, evals=None
 
     return results
 
-def process_clean_game(moves: list[str], fen: str = None) -> dict[int, tuple[int, Optional[Union["Blunder_opp_used", "Blunder_opp_not_used", "Missed_blunder"]]]]:
+def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
+    """
+    Analyzes a game and returns a list of dictionaries for each move, 
+    including evaluations and error details.
+    """
     if fen is None:
         fen = Board().fen()
-    _get_engine().set_fen_position(fen)
+        
+    engine = _get_engine()
+    engine.set_fen_position(fen)
     n = len(moves)
-
-    # fens[i] & evals[i] represent state BEFORE move i
-    fens = [fen] + [None] * n
-    evals = np.empty(n + 1)
-    evals[0] = _get_engine().get_evaluation()['value'] / 100
-
-    for i, m in enumerate(moves):
-        _get_engine().make_moves_from_current_position([m])
-        evals[i+1] = _get_engine().get_evaluation()['value'] / 100
-        fens[i+1] = _get_engine().get_fen_position()
-
-    q_f, q_m, q_evs, keys = [], [], [], []
+    
+    fens = [fen]
+    evals_dict = []
+    best_moves = []
+    
+    evals_dict.append(engine.get_evaluation())
+    #evals[i] represents evaluation after move i in 0-based index; for example evals[0] is evaluation after 1.e4
+    for m in moves:
+        best_moves.append(engine.get_best_move())
+        engine.make_moves_from_current_position([m])
+        evals_dict.append(engine.get_evaluation()) #We pass there evaluation as it is because model was trained at this
+        fens.append(engine.get_fen_position())
+        
+    # Identify blunders based on eval drop
+    error_keys = []
     for i in range(3, n-2):
-        if abs(evals[i+1] - evals[i]) >= error_delta:
-            q_f.append(fens[i])          # FEN before the blundering move
-            q_m.append(moves[i : i+4])   # Blunder + next 3 moves
-            q_evs.append(evals[i : i+4]) # Corresponding evals
-            keys.append(i + 1)           # 1-based move index
+        val_before = eval_to_cp(evals_dict[i]) / 100
+        val_after = -eval_to_cp(evals_dict[i+1]) / 100     #Stockfish yields evaluation from side of player whose move it is
+        if abs(val_after - val_before) >= error_delta:
+            error_keys.append(i)
+            
+    # Run decision pipeline for identified blunders
+    decision_results = {}
+    if error_keys:
+        q_f = [fens[i] for i in error_keys]
+        q_m = [moves[i : i+4] for i in error_keys]
+        q_evs = []
+        for i in error_keys:
+            seq = [eval_to_cp(evals_dict[j])/100 for j in range(i, min(i+4, len(evals_dict)))]
+            q_evs.append(seq)
+            
+        keys = [i + 1 for i in error_keys] 
+        res = decision(q_f, q_m, q_evs)
+        decision_results = dict(zip(keys, res))
+        
+    # Build final structured output
+    game_data = [None for _ in range(n)]
+    for i in range(n):
+        side = "Белые" if i % 2 == 0 else "Черные"
+        
+        is_error = i+1 in decision_results
+        scenario = None
+        tactic_class = None
+        correct_move = None
+        
+        if is_error:
+            is_strike, cls_idx, scen = decision_results[i+1]
+            if is_strike:
+                scenario = scen
+                tactic_class = cls_idx
+                correct_move = best_moves[i]
 
-    if not q_f:
-        return {}
-
-    return dict(zip(keys, decision(q_f, q_m, q_evs)))
+        eval_before = evals_dict[i - 1].copy()
+        eval_after = evals_dict[i].copy()
+        
+        if side == 'Белые':
+            eval_before['value'] *= -1
+        else:
+            eval_after['value'] *= -1
+            
+        game_data[i] = {
+            "side": side,
+            "uci": moves[i],
+            "eval_before": eval_before,
+            "eval_after": eval_after,
+            "is_error": is_error,
+            "scenario": scenario,
+            "tactic_class": tactic_class,
+            "correct_move": correct_move
+        }
+    return game_data
 
 def check_data(fen: str, moves: list[str]) -> None:
     """Validates FEN and sequential UCI moves. Raises ValueError on failure."""
@@ -288,6 +370,7 @@ def to_uci_moves(fens: list[str], moves: list[list[str]]) -> list[list[str]]:
     return uci_out
 
 if __name__=='__main__':
+    load_models()
     test_fen = 'rnbqkbnr/pppp1ppp/8/4p3/3P4/5N2/PPP1PPPP/RNBQKB1R b KQkq d3 0 2'
     
     # 1. Test SAN/PGN -> UCI conversion
