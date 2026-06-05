@@ -1,9 +1,11 @@
 pandas>=2.2.0
-chess==1.11.2
+chess==1.10.0
 tensorflow>=2.19.0
-python-dotenv
+python-dotenv>=1.2.2
 protobuf>=5.29.1,<6.0.0
-pyzstd
-einops
-stockfish
+pyzstd>=0.15.9
+einops>=0.8
+stockfish>=5.2.0
+fastapi>=0.136.3
+uvicorn>=0.48.0
 git+https://github.com/CSSLab/maia2
