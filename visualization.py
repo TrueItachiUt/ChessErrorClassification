@@ -19,6 +19,9 @@ context_labels = {
 }
 
 def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_class: int = None, demonstrate: bool = False):
+    if dnn_model is None:
+        load_models()
+        
     delay = 2
     positions, evals = prepare_for_model([fen], [moves])
     preds = dnn_model((positions, evals))
