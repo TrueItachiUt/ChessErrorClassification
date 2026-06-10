@@ -4,7 +4,10 @@ tensorflow>=2.19.0
 python-dotenv>=1.2.2
 protobuf>=5.29.1,<6.0.0
 stockfish>=5.2.0
+pyyaml==6.0.2
+einops==0.8.0
+gdown==5.2.0
 fastapi>=0.136.3
 pyzstd==0.15.9
 uvicorn>=0.48.0
-#git+https://github.com/CSSLab/maia2
+matplotlib
