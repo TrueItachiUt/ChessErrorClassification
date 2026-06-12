@@ -13,6 +13,15 @@ additional_target_classes = ['planless_game']
 targets = target_lichess_classes + additional_target_classes
 num_classes = len(targets)
 LI_COLS = ['PuzzleId', 'FEN', 'Moves', 'Rating', 'RatingDeviation', 'Popularity', 'NbPlays', 'Themes', 'GameUrl', 'OpeningTags']
+russian_targets = [
+'Открытый король', 'Жертва', 'Висящая фигура', 'Вилка',
+'Уничтожение защиты', 'Связка', 'Тихий ход', 'Промежуточный ход', 'Отвлечение'
+]
+context_labels = {
+"Blunder_opp_used": "Игрок ошибся, его соперник этим воспользовался",
+"Blunder_opp_not_used": "Игрок ошибся, но его соперник этим не воспользовался",
+"Missed_blunder": "Игрок не воспользовался возможностью значительно улучшить свою позицию"
+}
 
 def generate_target_vector(tags):
     tag_list = tags.split()

@@ -5,17 +5,7 @@ from IPython.display import display, clear_output
 from minimal_lc0_for_research.leela_board import LeelaBoard
 from chess import Board
 import backend_tools as bt
-from Dataset import threshold, targets
-
-russian_targets = [
-'Открытый король', 'Жертва', 'Висящая фигура', 'Вилка',
-'Уничтожение защиты', 'Связка', 'Тихий ход', 'Промежуточный ход', 'Отвлечение'
-]
-context_labels = {
-"Blunder_opp_used": "Игрок ошибся, его соперник этим воспользовался",
-"Blunder_opp_not_used": "Игрок ошибся, но его соперник этим не воспользовался",
-"Missed_blunder": "Игрок не воспользовался возможностью значительно улучшить свою позицию"
-}
+from Dataset import threshold, targets, russian_targets, context_labels
 
 def show_prediction(fen: str, moves: list[str], target_bin: bool = None, target_class: int = None, demonstrate: bool = False):
     if bt.dnn_model is None:
