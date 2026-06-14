@@ -81,8 +81,6 @@ def print_game_report(game_data: list[dict], show_only_errors: bool = True) -> N
             print(f"   📉 Оценка: {eval_before_str} ➔ {eval_after_str}")
             
             scenario = move_data.get("scenario")
-            if scenario in context_labels:
-                print(f"   📝 Контекст: {context_labels[scenario]}")
             
             tactic_class = move_data.get("tactic_class")
             if tactic_class is not None and 0 <= tactic_class < len(russian_targets):
@@ -122,8 +120,6 @@ def replay_report(game_data: list[dict], start_fen: str = None,
             
             if data['correct_move']:
                 print(f"✅ Правильный ход был: {data['correct_move']} ")
-            if data['scenario']:
-                print(f"📝 Контекст: {context_labels.get(data['scenario'], data['scenario'])} ")
             # Исправлено: проверка длины russian_targets вместо targets
             if data['tactic_class'] is not None and 0  <= data['tactic_class']  < len(russian_targets):
                 print(f"⚔️ Тактика: {russian_targets[data['tactic_class']]} ")

@@ -8,6 +8,9 @@ from config import PATH_TO_STOCKFISH
 import numpy as np
 from stockfish import Stockfish
 
+SEED = 42
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
 tf.config.experimental.enable_op_determinism()
 
 def load_models():
@@ -126,6 +129,7 @@ def decision(fens: list[str], moves: list, evals=None
     '''
     if dnn_model is None or maia2_model is None:
         load_models()
+        
 
     batch_size = len(fens)
 
@@ -136,7 +140,7 @@ def decision(fens: list[str], moves: list, evals=None
     if evals is not None:
         # Create mask for rows that have at least 3 elements and meet the threshold condition
         naive_mask = np.array([
-            (evals[i][0] - evals[i][2]) < threshold if len(evals[i]) >= 3 else False 
+            (evals[i][0] - evals[i][2]) < error_delta if len(evals[i]) >= 3 else False 
             for i in range(batch_size)
         ], dtype=bool)
 
