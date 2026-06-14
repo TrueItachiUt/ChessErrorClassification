@@ -11,3 +11,5 @@ fastapi>=0.136.3
 pyzstd==0.15.9
 uvicorn>=0.48.0
 matplotlib
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.4.0

@@ -40,8 +40,7 @@ uv pip install -r requirements.txt
 if [ ! -d "models" ] || [ ! -f "models/tf_model_19x256.keras" ]; then
     echo "⬇️  Скачивание моделей и данных..."
     uv pip install gdown
-    # Раскомментируйте, когда будете готовы:
-    # gdown --folder "https://drive.google.com/drive/folders/ВАШ_ID" -O . --quiet
+    gdown --folder "https://drive.google.com/drive/folders/1eegVg9K5tn4KqDwbuMyUgeh_lyxGjVTl" -O . --quiet
 fi
 
 # 7. Создаём .env для локального режима
