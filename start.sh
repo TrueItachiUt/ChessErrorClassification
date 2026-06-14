@@ -1,56 +1,57 @@
 #!/bin/bash
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 echo "=========================================="
-echo " Настройка виртуального окружения..."
+echo " Директория проекта: $SCRIPT_DIR"
 echo "=========================================="
 
-# 1. Ищем Python 3.12 (нужен для maia2 и совместимости с TensorFlow)
-PYTHON=""
-if command -v python3.12 &> /dev/null; then
-    PYTHON="python3.12"
-elif command -v python3.12.13 &> /dev/null; then
-    PYTHON="python3.12.13"
-else
-    echo "❌ Python 3.12 не найден в системе!"
-    echo "Установите его, например:"
-    echo "  sudo apt install python3.12 python3.12-venv python3.12-dev"
-    echo "  # или через pyenv:"
-    echo "  pyenv install 3.12.13"
-    exit 1
+# 1. Проверяем наличие uv
+if ! command -v uv &> /dev/null; then
+    echo "📦 Установка uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
-echo "✅ Используем: $($PYTHON --version)"
+echo "✅ uv version: $(uv --version)"
 
-# 2. Создаём venv только если его нет
+# 2. Создаём venv на Python 3.12 (uv сам скачает его, если нужно)
 if [ ! -d "venv" ]; then
-    echo "📦 Создание виртуального окружения на $($PYTHON --version)..."
-    $PYTHON -m venv venv
+    echo "📦 Создание venv на Python 3.12..."
+    uv venv venv --python 3.12
+else
+    echo "✅ venv уже существует"
 fi
 
 # 3. Активируем
 source venv/bin/activate
 
-# 4. Обновляем pip
-pip install --upgrade pip setuptools wheel -q
-
-# 5. Устанавливаем maia2 БЕЗ зависимостей (они конфликтуют с TF)
+# 4. Устанавливаем maia2 БЕЗ зависимостей (быстро через uv)
 echo "📥 Установка maia2 (без зависимостей)..."
-pip install --no-deps git+https://github.com/CSSLab/maia2 -q
+uv pip install --no-deps git+https://github.com/CSSLab/maia2
 
-# 6. Устанавливаем остальные зависимости
+# 5. Устанавливаем остальные зависимости
 echo "📥 Установка зависимостей из requirements.txt..."
-pip install -q -r requirements.txt
+uv pip install -r requirements.txt
 
-# 7. Скачиваем модели, если их нет
+# 6. Скачиваем модели, если их нет
 if [ ! -d "models" ] || [ ! -f "models/tf_model_19x256.keras" ]; then
     echo "⬇️  Скачивание моделей и данных..."
-    gdown --folder "https://drive.google.com/drive/folders/1eegVg9K5tn4KqDwbuMyUgeh_lyxGjVTl" -O . --quiet
+    uv pip install gdown
+    # Раскомментируйте, когда будете готовы:
+    # gdown --folder "https://drive.google.com/drive/folders/ВАШ_ID" -O . --quiet
 fi
 
-# 8. Создаём .env для локального режима
+# 7. Создаём .env для локального режима
 if [ ! -f ".env" ]; then
     echo "ENV=local" > .env
 fi
 
+echo "=========================================="
+echo " Python version in venv:"
+python --version
 echo "=========================================="
 echo " Запуск Chess Blunder Detector API..."
 echo "=========================================="
