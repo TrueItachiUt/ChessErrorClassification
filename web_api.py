@@ -41,7 +41,6 @@ async def analyze_game(fen: str = Form(...), moves_text: str = Form(...)):
                 "eval_before": format_eval(data["eval_before"]),
                 "eval_after": format_eval(data["eval_after"]),
                 "is_error": data["is_error"],
-                "scenario": data["scenario"],
                 "tactic_class": data["tactic_class"],
                 "correct_move": data["correct_move"]
             })

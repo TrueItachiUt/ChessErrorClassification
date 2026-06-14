@@ -249,67 +249,81 @@ def decision(fens: list[str], moves: list, evals=None
 
 def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
     """
-    Analyzes a game and returns a list of dictionaries for each move, 
-    including evaluations and error details.
+    Анализирует партию и возвращает список словарей для каждого хода.
+    is_error = True, если падение оценки >= error_delta.
+    Класс тактики выводится только если модель подтвердила ошибку (is_strike == True).
     """
     if fen is None:
         fen = Board().fen()
-        
     engine = _get_engine()
     engine.set_fen_position(fen)
     n = len(moves)
-    
+
     fens = [fen]
     evals_dict = []
     best_moves = []
-    
+
     evals_dict.append(engine.get_evaluation())
-    #evals[i] represents evaluation after move i in 1-based index; for example evals[1] is evaluation after 1.e4
     for m in moves:
         best_moves.append(engine.get_best_move())
         engine.make_moves_from_current_position([m])
-        evals_dict.append(engine.get_evaluation()) #We pass there evaluation as it is because model was trained at this
+        evals_dict.append(engine.get_evaluation())
         fens.append(engine.get_fen_position())
-        
-    # Identify blunders based on eval drop
-    error_keys = []
-    for i in range(3, n-2):
-        val_before = eval_to_cp(evals_dict[i]) / 100
-        val_after = eval_to_cp(evals_dict[i+1]) / 100
-        #Fixing stockfish evaluation from perspective of player whose move it is
-        if (i%2==0): 
-            val_before*=-1
-        else: 
-            val_after*=-1
-        if abs(val_after - val_before) >= error_delta:
-            error_keys.append(i)
+     
+    # 1. Находим ВСЕ ходы с падением оценки >= error_delta
+    eval_drop_keys = set()
+    error_keys_for_model = [] # Ходы, которые мы отправим в тяжелую модель
+
+    for i in range(n):
+        if i + 1 < len(evals_dict):
+            val_before = eval_to_cp(evals_dict[i]) / 100
+            val_after = eval_to_cp(evals_dict[i+1]) / 100
             
-    # Run decision pipeline for identified blunders
+            # Корректировка оценки Stockfish с точки зрения игрока, чей сейчас ход
+            if (i % 2 == 0): 
+                val_before *= -1
+            else: 
+                val_after *= -1
+                
+            if abs(val_after - val_before) >= error_delta:
+                eval_drop_keys.add(i + 1) # Сохраняем 1-based индекс хода
+                
+                # Отправляем в модель только если есть достаточный контекст (как в оригинале)
+                # чтобы избежать IndexError при извлечении последовательностей ходов
+                if 3 <= i <= n - 3:
+                    error_keys_for_model.append(i)
+        
+    # 2. Запускаем пайплайн принятия решений ТОЛЬКО для ходов с контекстом
     decision_results = {}
-    if error_keys:
-        q_f = [fens[i] for i in error_keys]
-        q_m = [moves[i : i+4] for i in error_keys]
+    if error_keys_for_model:
+        q_f = [fens[i] for i in error_keys_for_model]
+        q_m = [moves[i : i+4] for i in error_keys_for_model]
         q_evs = []
-        for i in error_keys:
+        for i in error_keys_for_model:
             seq = [eval_to_cp(evals_dict[j])/100 for j in range(i, min(i+4, len(evals_dict)))]
             q_evs.append(seq)
-            
-        keys = [i + 1 for i in error_keys] 
+        
+        keys = [i + 1 for i in error_keys_for_model] 
         res = decision(q_f, q_m, q_evs)
         decision_results = dict(zip(keys, res))
-        
-    # Build final structured output
+    
+    # 3. Формируем финальную структуру вывода
     game_data = [None for _ in range(n)]
     for i in range(n):
         side = "Белые" if i % 2 == 0 else "Черные"
         
-        is_error = i+1 in decision_results
+        # НОВАЯ ЛОГИКА: ошибка помечается по падению оценки, а не по решению модели
+        is_error = (i + 1) in eval_drop_keys
+        
         scenario = None
         tactic_class = None
         correct_move = None
         
-        if is_error:
-            is_strike, cls_idx, scen = decision_results[i+1]
+        # Если это ошибка по оценке, проверяем, что сказала модель
+        if is_error and (i + 1) in decision_results:
+            is_strike, cls_idx, scen = decision_results[i + 1]
+            
+            # Класс и детали заполняются ТОЛЬКО если модель подтвердила тактический удар
             if is_strike:
                 scenario = scen
                 tactic_class = cls_idx

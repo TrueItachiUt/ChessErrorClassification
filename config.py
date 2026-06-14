@@ -2,8 +2,6 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-path_col = '/content/drive/Shareddrives/Shared_drive1/ChessErrorClassification/'
-path_kaggle = '/kaggle/input'
 var = os.getenv('ENV')
 IS_COLAB = IS_KAGGLE = IS_PROJECT = False
 if var=='colab':
@@ -15,7 +13,8 @@ elif var=='local':
 else:
     raise ValueError(f"Invalid environmental variable information about environment.\
                         Valid options are 'colab', 'kaggle', 'local', got {var}")
-
+                        
+PUBLIC_DATA_FOLDER_ID = "0AFrf7xNlNL1kUk9PVA"
 FILES_COUNT = 50
 BINARY_DATA_DIR = 'BinaryClassifierData'
 MULTICLASS_DATA_DIR = 'data'
@@ -26,12 +25,14 @@ MODEL_FILE_NAME = 'tf_model_19x256.keras'
 CHECKPOINT_FILE_NAME = 'last.weights.h5'
 
 if IS_COLAB:
-    BINARY_DATA_DIR = f'{path_col}Data/Binary'
-    MULTICLASS_DATA_DIR = f'{path_col}Data/Multiclass'
-    MODEL_DIR = f'{path_col}Models'
-    CHECKPOINT_DIR = f'{path_col}Models'
+    BASE_COLAB_PATH = '/content/ChessErrorClassification'
+    BINARY_DATA_DIR = f'{BASE_COLAB_PATH}/Data/Binary'
+    MULTICLASS_DATA_DIR = f'{BASE_COLAB_PATH}/Data/Multiclass'
+    MODEL_DIR = f'{BASE_COLAB_PATH}/Models'
+    CHECKPOINT_DIR = f'{BASE_COLAB_PATH}/Models'
 
 if IS_KAGGLE:
+    path_kaggle = '/kaggle/input'
     DATA_DIR = f'{path_kaggle}/datasets/itachiut/binaryclassifierdata'
     MODEL_DIR = f'{path_kaggle}/itachiut/cnnlstm/tensorflow2/default/1'
     CHECKPOINT_DIR = MODEL_DIR
