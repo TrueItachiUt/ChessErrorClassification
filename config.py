@@ -36,5 +36,12 @@ if IS_KAGGLE:
     DATA_DIR = f'{path_kaggle}/datasets/itachiut/binaryclassifierdata'
     MODEL_DIR = f'{path_kaggle}/itachiut/cnnlstm/tensorflow2/default/1'
     CHECKPOINT_DIR = MODEL_DIR
+
+if IS_PROJECT:
+    BASE_LOCAL_PATH = os.path.dirname(os.path.abspath(__file__))
+    BINARY_DATA_DIR = f'{BASE_LOCAL_PATH}/BinaryClassifierData'
+    MULTICLASS_DATA_DIR = f'{BASE_LOCAL_PATH}/data'
+    MODEL_DIR = f'{BASE_LOCAL_PATH}/models'
+    CHECKPOINT_DIR = f'{BASE_LOCAL_PATH}/models'
     
 PATH_TO_STOCKFISH = 'stockfish/stockfish-ubuntu-x86-64-avx2'
