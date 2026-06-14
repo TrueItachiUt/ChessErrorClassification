@@ -17,41 +17,41 @@ fi
 
 echo "✅ uv version: $(uv --version)"
 
-# 2. Создаём venv на Python 3.12 (uv сам скачает его, если нужно)
-if [ ! -d "venv" ]; then
-    echo "📦 Создание venv на Python 3.12..."
-    uv venv venv --python 3.12
+# 2. Создаём .venv на Python 3.12 (стандартное имя для uv и VSCode)
+if [ ! -d ".venv" ]; then
+    echo "📦 Создание .venv на Python 3.12..."
+    uv venv .venv --python 3.12
 else
-    echo "✅ venv уже существует"
+    echo "✅ .venv уже существует"
 fi
 
-# 3. Активируем
-source venv/bin/activate
-
-# 4. Устанавливаем maia2 БЕЗ зависимостей (быстро через uv)
+# 3. Устанавливаем maia2 БЕЗ зависимостей (быстро через uv)
 echo "📥 Установка maia2 (без зависимостей)..."
-uv pip install --no-deps git+https://github.com/CSSLab/maia2
+uv pip install --python .venv/bin/python --no-deps git+https://github.com/CSSLab/maia2
 
-# 5. Устанавливаем остальные зависимости
+# 4. Устанавливаем остальные зависимости
 echo "📥 Установка зависимостей из requirements.txt..."
-uv pip install -r requirements.txt
+uv pip install --python .venv/bin/python -r requirements.txt
 
-# 6. Скачиваем модели, если их нет
+# 5. Скачиваем модели, если их нет
 if [ ! -d "models" ] || [ ! -f "models/tf_model_19x256.keras" ]; then
     echo "⬇️  Скачивание моделей и данных..."
-    uv pip install gdown
-    gdown --folder "https://drive.google.com/drive/folders/1eegVg9K5tn4KqDwbuMyUgeh_lyxGjVTl" -O . --quiet
+    uv pip install --python .venv/bin/python gdown
+    # Вызываем gdown напрямую из .venv, чтобы не зависеть от PATH
+    .venv/bin/gdown --folder "https://drive.google.com/drive/folders/1eegVg9K5tn4KqDwbuMyUgeh_lyxGjVTl" -O . --quiet
 fi
 
-# 7. Создаём .env для локального режима
+# 6. Создаём .env для локального режима
 if [ ! -f ".env" ]; then
     echo "ENV=local" > .env
 fi
 
 echo "=========================================="
-echo " Python version in venv:"
-python --version
+echo " Python version in .venv:"
+.venv/bin/python --version
 echo "=========================================="
-echo " Запуск Chess Blunder Detector API..."
+echo "✅ Настройка окружения успешно завершена!"
 echo "=========================================="
-python web_api.py
+echo "🚀 Чтобы запустить проект из терминала:"
+echo "   uv run web_api.py"
+echo "=========================================="

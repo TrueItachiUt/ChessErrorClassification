@@ -10,6 +10,8 @@ gdown==5.2.0
 fastapi>=0.136.3
 pyzstd==0.15.9
 uvicorn>=0.48.0
-matplotlib
+matplotlib>=3.10
+ipython>=7.34
+python-multipart>=0.0.32
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.4.0
