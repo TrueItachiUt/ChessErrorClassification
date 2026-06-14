@@ -4,227 +4,182 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Анализ шахматных партий</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-        }
-        .container {
-            background: #fff;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 800px;
-        }
-        h1 { color: #2c3e50; text-align: center; margin-bottom: 5px;}
-        h3 { color: #7f8c8d; text-align: center; font-weight: normal; margin-top: 0; }
-        
-        label {
-            display: block;
-            margin-top: 20px;
-            font-weight: bold;
-            color: #34495e;
-        }
-        input[type="text"], textarea {
-            width: 100%;
-            padding: 12px;
-            margin-top: 8px;
-            border: 1px solid #bdc3c7;
-            border-radius: 5px;
-            box-sizing: border-box;
-            font-size: 14px;
-            font-family: monospace;
-        }
-        textarea {
-            height: 120px;
-            resize: vertical;
-        }
-        
-        /* Стили для кнопок */
-        .btn-group {
-            margin-top: 25px;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: background 0.3s, transform 0.1s;
-        }
-        .btn:active { transform: scale(0.98); }
-        
-        .btn-analyze {
-            background-color: #2ecc71;
-            color: white;
-            flex-grow: 1;
-        }
-        .btn-analyze:hover { background-color: #27ae60; }
-        
-        /* Синие кнопки для примеров */
-        .btn-example {
-            background-color: #3498db; 
-            color: white;
-        }
-        .btn-example:hover { background-color: #2980b9; }
-
-        .results {
-            margin-top: 30px;
-        }
-        .results h2 {
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
-            color: #2c3e50;
-        }
-        .move-item {
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 5px;
-            border-left: 5px solid #bdc3c7;
-            background: #fcfcfc;
-        }
-        .move-item.error {
-            border-left-color: #e74c3c;
-            background-color: #fdedec;
-        }
-        .move-item.clean {
-            border-left-color: #2ecc71;
-            background-color: #eafaf1;
-        }
-        .loader {
-            text-align: center;
-            font-size: 18px;
-            color: #3498db;
-            margin-top: 20px;
-            display: none;
-        }
+        #board { width: 400px; margin: 0 auto; }
+        .move-item { cursor: pointer; padding: 8px; border-bottom: 1px solid #eee; transition: background 0.2s; }
+        .move-item:hover { background-color: #f8f9fa; }
+        .move-item.active { background-color: #e2e6ea; font-weight: bold; }
+        .move-item.error { border-left: 4px solid #dc3545; background-color: #fff5f5; }
+        .badge-error { background-color: #dc3545; color: white; }
+        .badge-ok { background-color: #198754; color: white; }
     </style>
+    <script>
+        const RUSSIAN_TARGETS = ['Открытый король', 'Жертва', 'Висящая фигура', 'Вилка', 'Уничтожение защиты', 'Связка', 'Тихий ход', 'Промежуточный ход', 'Отвлечение'];
+        const CONTEXT_LABELS = {
+            "Blunder_opp_used": "Игрок ошибся, соперник воспользовался",
+            "Blunder_opp_not_used": "Игрок ошибся, соперник не воспользовался",
+            "Missed_blunder": "Игрок не воспользовался ошибкой соперника"
+        };
+    </script>
 </head>
-<body>
-
-<div class="container">
-    <h1>Анализ шахматных партий</h1>
-    <h3>Анализ тактических ошибок</h3>
-    
-    <form id="analyzeForm">
-        <label for="fen">Начальная позиция (FEN):</label>
-        <input type="text" id="fen" name="fen" value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1" placeholder="Введите FEN">
-        
-        <label for="moves">Ходы (через пробел, UCI или SAN/PGN):</label>
-        <textarea id="moves" name="moves" placeholder="Например: e2e4 e7e5 или 1. e4 e5"></textarea>
-        
-        <div class="btn-group">
-            <!-- Новые синие кнопки -->
-            <button type="button" class="btn btn-example" onclick="loadExample(1)">Пример 1</button>
-            <button type="button" class="btn btn-example" onclick="loadExample(2)">Пример 2</button>
-            
-            <button type="submit" class="btn btn-analyze">Проанализировать</button>
-        </div>
-    </form>
-
-    <div class="loader" id="loader">⏳ Анализируем партию, это может занять некоторое время...</div>
-
-    <div class="results">
-        <h2>Ходы и Анализ</h2>
-        <div id="resultsContainer">
-            <p>Загрузите партию для анализа или выберите пример.</p>
+<body class="bg-light">
+    <div class="container py-4">
+        <h2 class="text-center mb-4">Анализ тактических ошибок</h2>
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card p-3 mb-3">
+                    <h5>Настройки партии</h5>
+                    <div class="mb-3">
+                        <label class="form-label">Начальная позиция (FEN)</label>
+                        <input type="text" id="fenInput" class="form-control" value="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ходы (через пробел, UCI или SAN/PGN)</label>
+                        <textarea id="movesInput" class="form-control" rows="6" placeholder="Например: e4 e5 Nf3 Nc6 Bc4 Bc5"></textarea>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-2" onclick="document.getElementById('movesInput').value='e2e4 c7c5 g1f3 a7a6 d2d4 c5d4 f3d4 e7e5 d4f3 g8f6 f3e5 d8a5 b1c3 a5e5 f1c4 b8c6 e1g1 f6e4 c3e4 e5e4 f1e1 e4e1 d1e1 f8e7 c1f4 c6a5 e1a5'">пример 1</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('movesInput').value='1. e4 e5 2. f4 exf4 3. Bc4 Qh4+ 4. Kf1 b5 5. Bxb5 Nf6 6. Nf3 Qh6 7. d3 Nh5 8. Nh4 Qg5 9. Nf5 c6 10. g4 Nf6 11. Rg1 cxb5 12. h4 Qg6 13. h5 Qg5 14. Qf3 Ng8 15. Bxf4 Qf6 16. Nc3 Bc5 17. Nd5 Qxb2 18. Bd6 Bxg1 19. e5 Qxa1+ 20. Ke2 Na6 21. Nxg7+ Kd8 22. Qf6+ Nxf6 23. Be7#'">пример 2</button>
+                        </div>
+                    </div>
+                    <button id="analyzeBtn" class="btn btn-primary w-100" onclick="analyzeGame()">
+                        <span id="btnText">Проанализировать</span>
+                        <span id="btnLoader" class="spinner-border spinner-border-sm d-none"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div id="board"></div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3">
+                    <h5>Ходы и Анализ</h5>
+                    <div id="moveList" class="mb-3" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
+                        <div class="text-muted text-center p-3">Загрузите партию для анализа</div>
+                    </div>
+                    <div id="analysisPanel" class="analysis-panel d-none" style="background: #f8f9fa; padding: 15px; border-radius: 8px; min-height: 200px;">
+                        <h6 id="analysisTitle">Ход #</h6>
+                        <div id="analysisContent"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
-<script>
-    // Словарь с данными для примеров
-    const examples = {
-        1: {
-            fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-            moves: "e2e4 c7c5 g1f3 a7a6 d2d4 c5d4 f3d4 e7e5 d4f3 g8f6 f3e5 d8a5 b1c3 a5e5 f1c4 b8c6 e1g1 f6e4 c3e4 e5e4 f1e1 e4e1 d1e1 f8e7 c1f4 c6a5 e1a5"
-        },
-        2: {
-            fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-            moves: "1. e4 e5 2. f4 exf4 3. Bc4 Qh4+ 4. Kf1 b5 5. Bxb5 Nf6 6. Nf3 Qh6 7. d3 Nh5 8. Nh4 Qg5 9. Nf5 c6 10. g4 Nf6 11. Rg1 cxb5 12. h4 Qg5 13. h5 Qg5 14. Qf3 Ng8 15. Bxf4 Qf6 16. Nc3 Bc5 17. Nd5 Qxb2 18. Bd6 Bxg1 19. e5 Qxa1+ 20. Ke2 Na6 21. Nxg7+ Kd8 22. Qf6+ Nxf6 23. Be7#"
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <script>
+        let board = null;
+        let game = new Chess();
+        let currentGameData = [];
+
+        function initBoard(fen) {
+            game.load(fen);
+            const config = {
+                position: fen,
+                draggable: false,
+                // НАДЕЖНЫЙ CDN ДЛЯ ФИГУР
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+            };
+            if (board) board.destroy();
+            board = Chessboard('board', config);
         }
-    };
 
-    // Функция, которая срабатывает при клике на "Пример 1" или "Пример 2"
-    function loadExample(num) {
-        const ex = examples[num];
-        if (ex) {
-            document.getElementById('fen').value = ex.fen;
-            document.getElementById('moves').value = ex.moves;
-        }
-    }
+        async function analyzeGame() {
+            const fen = document.getElementById('fenInput').value.trim();
+            const movesText = document.getElementById('movesInput').value.trim();
 
-    // Обработка отправки формы на сервер
-    document.getElementById('analyzeForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const fen = document.getElementById('fen').value;
-        const moves = document.getElementById('moves').value;
-        const loader = document.getElementById('loader');
-        const container = document.getElementById('resultsContainer');
-        
-        loader.style.display = 'block';
-        container.innerHTML = '';
-        
-        const formData = new FormData();
-        formData.append('fen', fen);
-        formData.append('moves_text', moves);
-        
-        try {
-            const response = await fetch('/api/analyze', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            loader.style.display = 'none';
-            
-            if (result.success) {
-                if (!result.data || result.data.length === 0) {
-                    container.innerHTML = '<p>Партия проанализирована, ходы не найдены.</p>';
-                    return;
+            if (!movesText) { alert("Введите хотя бы один ход!"); return; }
+
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('btnText').innerText = "Анализ...";
+            document.getElementById('btnLoader').classList.remove('d-none');
+
+            const formData = new FormData();
+            formData.append('fen', fen);
+            formData.append('moves_text', movesText);
+
+            try {
+                const response = await fetch('/api/analyze', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (result.success) {
+                    currentGameData = result.data;
+                    initBoard(fen);
+                    renderMoveList(result.data);
+                    document.getElementById('analysisPanel').classList.add('d-none');
+                } else {
+                    alert("Ошибка: " + result.error);
                 }
-                
-                let html = '';
-                result.data.forEach(move => {
-                    const isError = move.is_error;
-                    const cssClass = isError ? 'error' : 'clean';
-                    const icon = isError ? '🚨' : '✅';
-                    const moveNum = Math.ceil(move.move_number / 2);
-                    const dots = move.move_number % 2 !== 0 ? '.' : '...';
-                    
-                    html += `<div class="move-item ${cssClass}">
-                        <strong>${icon} Ход ${moveNum}${dots} ${move.side} | ${move.uci}</strong><br>
-                        Оценка: ${move.eval_before} ➔ ${move.eval_after}<br>`;
-                    
-                    if (isError) {
-                        html += `<b style="color: #c0392b;">ОШИБКА!</b><br>`;
-                        if (move.correct_move) html += `✅ Правильный ход: <code>${move.correct_move}</code><br>`;
-                        if (move.scenario) html += `📝 Контекст: ${move.scenario}<br>`;
-                        if (move.tactic_class !== null && move.tactic_class !== undefined) html += `⚔️ Тактика (класс): ${move.tactic_class}<br>`;
-                    }
-                    html += `</div>`;
-                });
-                container.innerHTML = html;
-            } else {
-                container.innerHTML = `<p style="color: #e74c3c; font-weight: bold;">❌ Ошибка: ${result.error}</p>`;
+            } catch (error) {
+                alert("Ошибка сети: " + error.message);
+            } finally {
+                document.getElementById('analyzeBtn').disabled = false;
+                document.getElementById('btnText').innerText = "Проанализировать";
+                document.getElementById('btnLoader').classList.add('d-none');
             }
-        } catch (error) {
-            loader.style.display = 'none';
-            container.innerHTML = `<p style="color: #e74c3c; font-weight: bold;">❌ Ошибка сети: ${error.message}</p>`;
         }
-    });
-</script>
 
+        function renderMoveList(data) {
+            const listContainer = document.getElementById('moveList');
+            listContainer.innerHTML = '';
+            let tempGame = new Chess();
+            tempGame.load(document.getElementById('fenInput').value.trim());
+
+            data.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = `move-item ${item.is_error ? 'error' : ''}`;
+                div.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <span><strong>${item.move_number}.</strong> ${item.side} (${item.uci})</span>
+                        ${item.is_error ? '<span class="badge badge-error">Ошибка</span>' : '<span class="badge badge-ok">OK</span>'}
+                    </div>
+                `;
+                
+                try {
+                    tempGame.move({ from: item.uci.substring(0,2), to: item.uci.substring(2,4), promotion: item.uci.length > 4 ? item.uci[4] : undefined });
+                    const fenAfterMove = tempGame.fen();
+                    div.onclick = () => showMoveDetails(index, fenAfterMove, div);
+                } catch(e) {
+                    div.onclick = () => showMoveDetails(index, null, div);
+                }
+                listContainer.appendChild(div);
+            });
+        }
+
+        function showMoveDetails(index, fenAfterMove, element) {
+            document.querySelectorAll('.move-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            const data = currentGameData[index];
+            const panel = document.getElementById('analysisPanel');
+            const content = document.getElementById('analysisContent');
+            const title = document.getElementById('analysisTitle');
+
+            title.innerText = `Ход ${data.move_number}: ${data.side} (${data.uci})`;
+            panel.classList.remove('d-none');
+
+            if (fenAfterMove) board.position(fenAfterMove);
+
+            let html = `<p><strong>Оценка:</strong> ${data.eval_before} ➔ ${data.eval_after}</p>`;
+            if (data.is_error) {
+                html += `<hr><div class="text-danger"><strong>⚠️ Обнаружена ошибка!</strong></div>`;
+                if (data.scenario && CONTEXT_LABELS[data.scenario]) html += `<p><strong>Контекст:</strong> ${CONTEXT_LABELS[data.scenario]}</p>`;
+                if (data.tactic_class !== null && data.tactic_class < RUSSIAN_TARGETS.length) {html += `<p><strong>Тип тактики:</strong> ${RUSSIAN_TARGETS[data.tactic_class]}</p>`;}
+                else {html+=`<p><strong>Ошибка не является тактической или класс определить затруднительно</p>`}
+                if (data.correct_move) html += `<p><strong>Лучший ход был:</strong> <code>${data.correct_move}</code></p>`;
+            } else {
+                html += `<hr><p class="text-success">Ход не является серьезной ошибкой.</p>`;
+            }
+            content.innerHTML = html;
+        }
+
+        $(document).ready(function() {
+            initBoard(document.getElementById('fenInput').value.trim());
+        });
+    </script>
 </body>
 </html>

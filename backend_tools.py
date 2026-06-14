@@ -289,11 +289,14 @@ def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
             else: 
                 val_after *= -1
                 
-            if abs(val_after - val_before) >= error_delta:
-                eval_drop_keys.add(i + 1) # Сохраняем 1-based индекс хода
-                
-                # Отправляем в модель только если есть достаточный контекст (как в оригинале)
-                # чтобы избежать IndexError при извлечении последовательностей ходов
+            eval_drop = val_before - val_after
+
+            # Засчитываем только ухудшение позиции игрока.
+            # Если оценка выросла (eval_after > val_before),
+            # ошибка не фиксируется.
+            if eval_drop >= error_delta:
+                eval_drop_keys.add(i + 1)
+
                 if 3 <= i <= n - 3:
                     error_keys_for_model.append(i)
         
@@ -322,10 +325,14 @@ def process_clean_game(moves: list[str], fen: str = None) -> list[dict]:
         scenario = None
         tactic_class = None
         correct_move = None
-        
+
+        if best_moves[i]==moves[i]:
+            is_error = False
+            
         # Если это ошибка по оценке, проверяем, что сказала модель
         if is_error and (i + 1) in decision_results:
             is_strike, cls_idx, scen = decision_results[i + 1]
+
             
             # Класс и детали заполняются ТОЛЬКО если модель подтвердила тактический удар
             if is_strike:
